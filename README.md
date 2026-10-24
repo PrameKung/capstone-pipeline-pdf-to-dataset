@@ -83,3 +83,35 @@ format consistency but do not guarantee identical output or valid LaTeX on every
 Prompt changes apply to new extractions after restarting the local worker or rebuilding
 the Docker worker image. Existing Markdown and completed-job markers are not migrated;
 successfully cached jobs remain skipped.
+
+## Parse and match existing OCR Markdown
+
+The dataset parser reads a job's separate OCR responses without rerunning Codex or
+writing artifacts. From `backend/`, call:
+
+```python
+from pathlib import Path
+from app.pipeline.dataset.markdown import read_job_markdown
+
+result = read_job_markdown(Path("../.pipeline/jobs/signal/318/1"))
+for response in result.responses:
+    print(response.question_label, response.source_pages, response.needs_review)
+```
+
+It preserves student Markdown/LaTeX and keeps literal teacher scores, marks, and
+feedback in separate grading records. Exact question labels occurring once per
+page are grouped across pages; labels are not mapped to dataset question IDs yet.
+Unknown labels and duplicate student labels on a page are kept separate for
+review. Unmatched grading remains available in `result.unmatched_grading`.
+Missing grading, unclear content, repeated grading sections, and distinct raw
+scores produce review notes; no scores are calculated or summed.
+
+The parser expects `## Page N` and `### Question LABEL` headings from the current
+OCR prompts. It rejects page 1, non-increasing page numbers, and malformed headings
+with `MarkdownFormatError`. Unlabeled page content is retained for review. Only
+boundary blank lines are trimmed. Cross-page grouping assumes repeated exact
+labels refer to the same question within a PDF; it cannot resolve reused question
+numbers in different exam sections. It cannot detect teacher content that OCR
+mistakenly included in student text.
+
+This is an in-memory parsing stage, not CSV export or worker integration.
