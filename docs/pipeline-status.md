@@ -25,7 +25,11 @@
 - No review UI or human-verification workflow; review issues are in internal JSON.
 - OCR retries rerun both passes; successful individual passes are not checkpointed.
 - Synthetic inline checks covered parsing, records, validation, export, and worker
-  integration with extraction stubs. Live extraction accuracy and Docker runtime
-  behavior have not been verified by these checks.
+  integration with extraction stubs. Task 5 additionally checked real export-only
+  CLI subprocesses, concurrent claims, lock-owner termination, and publication
+  failure recovery. Docker Compose configuration validates; live extraction
+  accuracy and Docker runtime behavior remain unverified.
 
 See the README for export commands, metadata inputs, caching, and upgrade notes.
+
+See [verification results](pipeline-verification.md) for the checked cases and limits.

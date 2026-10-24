@@ -224,7 +224,11 @@ mirroring the PDF paths: `raw/signal/318/1.pdf` uses
 `<metadata-dir>/signal/318/1.json`. Each file accepts `questions` (exact OCR label
 to question fields) and `responses` (stable response ID to response fields).
 Missing files mean no supplied metadata. Store private metadata under `.pipeline/`
-to keep it out of Git. For Docker, use a path inside the mounted state folder.
+to keep it out of Git. Docker defaults to `/data/.pipeline/metadata`, corresponding
+to the host's `.pipeline/metadata/`. Override `PIPELINE_METADATA_DIR` in `.env`
+with a container path inside the mounted state folder. Local workers interpret
+the environment variable as a local path; use `--metadata-dir ../.pipeline/metadata`
+when running from `backend/`.
 
 The output has the exact 36-column header, UTF-8 encoding, and standard CSV
 quoting for multiline Markdown, LaTeX, commas, and quotes. Failed validation
@@ -258,3 +262,6 @@ on each scan and can cost noticeable I/O on large input collections.
 The worker integration was checked with synthetic extraction stubs, not live
 Codex calls. Existing OCR still sends graded page images to the student pass;
 this export work does not fix that previously identified isolation limitation.
+
+See [verification results](docs/pipeline-verification.md) for the synthetic
+edge cases, concurrent-process checks, recovery checks, and unverified areas.
