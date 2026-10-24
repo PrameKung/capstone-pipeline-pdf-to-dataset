@@ -265,3 +265,32 @@ this export work does not fix that previously identified isolation limitation.
 
 See [verification results](docs/pipeline-verification.md) for the synthetic
 edge cases, concurrent-process checks, recovery checks, and unverified areas.
+
+## Reuse one question template across an exam batch
+
+A shared template avoids copying question/solution/rubric metadata into every
+student's per-PDF metadata file. Store it locally under `.pipeline/templates/`
+as JSON with a single `questions` mapping in the same format used by per-PDF
+metadata. Keys must match OCR question labels exactly; explicit punctuation
+aliases can share the same stable question ID. Include parent and subpart entries
+only as alternative mapping levels, not extra exam points.
+
+From `backend/`, select a template for a batch belonging to that exam:
+
+```sh
+uv run --locked python -m app.pipeline.jobs.worker --once --export-only \
+  --question-template ../.pipeline/templates/<exam>/questions.json
+```
+
+Alternatively set `PIPELINE_QUESTION_TEMPLATE` to a local file path. For Docker,
+set it in `.env` to `/data/.pipeline/templates/<exam>/questions.json` and recreate
+the workers. It is blank by default so unrelated exams are not assigned a template.
+Use separate runs/configurations for different exams.
+
+Per-PDF `questions` metadata overrides individual template fields for the same
+label; per-response data remains in the per-PDF `responses` mapping. Missing
+question wording may remain an empty `question_text`. Reference solutions and
+rubric policies do not assign student scores, generate rubric analysis, or imply
+human review. Unsupported labels remain unmapped. Changes to the template
+invalidate the export cache and allow failed polling jobs to retry. Invalid or
+missing explicitly selected templates fail without replacing the previous CSV.

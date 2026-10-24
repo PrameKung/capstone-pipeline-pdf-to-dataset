@@ -28,7 +28,7 @@ def _claim_key(raw_dir: Path, pdf_path: Path) -> str:
 
 def process_pdf(raw_dir: Path, state_dir: Path, pdf_path: Path, *,
                 output_dir: Path = Path("../output"), export_only: bool = False,
-                metadata_dir: Path | None = None) -> bool:
+                metadata_dir: Path | None = None, question_template: Path | None = None) -> bool:
     """Serialize OCR and export for a source; OS releases locks after crashes."""
     raw_dir, state_dir, output_dir = raw_dir.resolve(), state_dir.resolve(), output_dir.resolve()
     if any(a == b or a.is_relative_to(b) or b.is_relative_to(a)
@@ -82,7 +82,8 @@ def process_pdf(raw_dir: Path, state_dir: Path, pdf_path: Path, *,
             if metadata_path is not None and not metadata_path.is_file():
                 metadata_path = None
             changed = export_job(pdf_path, raw_dir, state_dir, output_dir,
-                                 extraction=manifest, metadata_path=metadata_path)
+                                 extraction=manifest, metadata_path=metadata_path,
+                                 question_template=question_template)
             failure_path.unlink(missing_ok=True)
             return changed
         except Exception as exc:
@@ -93,7 +94,7 @@ def process_pdf(raw_dir: Path, state_dir: Path, pdf_path: Path, *,
 
 def run_worker(raw_dir: Path, state_dir: Path, workers: int, poll_seconds: float, once: bool,
                *, output_dir: Path = Path("../output"), export_only: bool = False,
-               metadata_dir: Path | None = None) -> int:
+               metadata_dir: Path | None = None, question_template: Path | None = None) -> int:
     if workers < 1 or poll_seconds <= 0:
         raise ValueError("workers and poll_seconds must be positive")
     raw_dir, state_dir = raw_dir.resolve(), state_dir.resolve()
@@ -111,11 +112,14 @@ def run_worker(raw_dir: Path, state_dir: Path, workers: int, poll_seconds: float
                     watched = [path, job / "student-response.md", job / "grading-response.md"]
                     if metadata_dir:
                         watched.append(metadata_dir / relative.with_suffix(".json"))
+                    if question_template:
+                        watched.append(question_template)
                     signature = tuple(_sha256(item) if item.is_file() else None for item in watched)
                     if failed_inputs.get(path) == signature:
                         return False
                     process_pdf(raw_dir, state_dir, path, output_dir=output_dir,
-                                export_only=export_only, metadata_dir=metadata_dir)
+                                export_only=export_only, metadata_dir=metadata_dir,
+                                question_template=question_template)
                     failed_inputs.pop(path, None)
                     return True
                 except Exception as exc:
@@ -135,13 +139,15 @@ def main() -> None:
     parser.add_argument("--state-dir", type=Path, default=Path(os.environ.get("PIPELINE_DATA_DIR", "../.pipeline")))
     parser.add_argument("--output-dir", type=Path, default=Path(os.environ.get("OUTPUT_DIR", "../output")))
     parser.add_argument("--metadata-dir", type=Path, default=Path(os.environ["PIPELINE_METADATA_DIR"]) if os.environ.get("PIPELINE_METADATA_DIR") else None)
+    parser.add_argument("--question-template", type=Path, default=Path(os.environ["PIPELINE_QUESTION_TEMPLATE"]) if os.environ.get("PIPELINE_QUESTION_TEMPLATE") else None)
     parser.add_argument("--export-only", action="store_true", help="Export existing Markdown without running OCR")
     parser.add_argument("--workers", type=int, default=int(os.environ.get("PIPELINE_WORKERS", "2")))
     parser.add_argument("--poll-seconds", type=float, default=float(os.environ.get("PIPELINE_POLL_SECONDS", "5")))
     parser.add_argument("--once", action="store_true", help="Process current PDFs, then exit")
     args = parser.parse_args()
     failed = run_worker(args.raw_dir, args.state_dir, args.workers, args.poll_seconds, args.once,
-                        output_dir=args.output_dir, export_only=args.export_only, metadata_dir=args.metadata_dir)
+                        output_dir=args.output_dir, export_only=args.export_only, metadata_dir=args.metadata_dir,
+                        question_template=args.question_template)
     if failed:
         raise SystemExit(f"{failed} PDF job(s) failed; inspect worker logs and .pipeline/claims/*.failure.json.")
 

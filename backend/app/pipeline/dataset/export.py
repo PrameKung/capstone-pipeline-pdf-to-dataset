@@ -37,7 +37,8 @@ def read_json(path: Path) -> dict:
 
 
 def export_job(source: Path, raw_dir: Path, state_dir: Path, output_dir: Path,
-               *, extraction: dict, metadata_path: Path | None = None) -> bool:
+               *, extraction: dict, metadata_path: Path | None = None,
+               question_template: Path | None = None) -> bool:
     """Export under the caller's shared job lock; return False for a cache hit."""
     relative = source.relative_to(raw_dir)
     destination = (output_dir / relative.with_suffix(".csv")).resolve()
@@ -56,10 +57,23 @@ def export_job(source: Path, raw_dir: Path, state_dir: Path, output_dir: Path,
         raise ValueError("Metadata must be an object with only questions and responses mappings")
     if any(not isinstance(value, dict) for value in metadata.values()):
         raise ValueError("Metadata questions and responses must be mappings")
+    template_bytes = question_template.read_bytes() if question_template else b"{}"
+    template = json.loads(template_bytes)
+    if (not isinstance(template, dict) or set(template) - {"questions"}
+            or not isinstance(template.get("questions", {}), dict)):
+        raise ValueError("Question template must contain only a questions mapping")
+    questions = dict(template.get("questions", {}))
+    if any(not isinstance(value, dict) for value in questions.values()):
+        raise ValueError("Each template question must be a field mapping")
+    for label, fields in metadata.get("questions", {}).items():
+        if not isinstance(fields, dict):
+            raise ValueError("Each metadata question must be a field mapping")
+        questions[label] = {**questions.get(label, {}), **fields}
     fingerprint = {
         "version": EXPORT_VERSION, "source_sha256": _sha256(source),
         "markdown": {name: _sha256(path) for name, path in paths.items()},
         "metadata_sha256": hashlib.sha256(metadata_bytes).hexdigest(),
+        "template_sha256": hashlib.sha256(template_bytes).hexdigest(),
         "extraction": extraction,
     }
     if not extraction and previous and previous.get("inputs", {}).get("source_sha256") != fingerprint["source_sha256"]:
@@ -69,7 +83,7 @@ def export_job(source: Path, raw_dir: Path, state_dir: Path, output_dir: Path,
         return False
     result = build_job_records(
         source, raw_dir=raw_dir, state_dir=state_dir,
-        questions=metadata.get("questions"), response_metadata=metadata.get("responses"),
+        questions=questions, response_metadata=metadata.get("responses"),
         extraction_config=extraction.get("config"),
         extraction_source_sha256=extraction.get("source_sha256"),
     )
@@ -102,7 +116,8 @@ def export_job(source: Path, raw_dir: Path, state_dir: Path, output_dir: Path,
                 raise ValueError("Unexpected CSV rows")
         if (_sha256(source) != fingerprint["source_sha256"]
                 or any(_sha256(paths[n]) != digest for n, digest in fingerprint["markdown"].items())
-                or (metadata_path and metadata_path.read_bytes() != metadata_bytes)):
+                or (metadata_path and metadata_path.read_bytes() != metadata_bytes)
+                or (question_template and question_template.read_bytes() != template_bytes)):
             raise ValueError("Inputs changed during export; previous CSV retained")
         csv_sha = _sha256(Path(name))
         atomic_json(marker, {"inputs": fingerprint, "destination": str(destination),
