@@ -46,3 +46,16 @@ The worker image includes Codex CLI and uses the host's `codex login` file throu
 - Job markers and intermediate state: `.pipeline/`
 
 These data directories and local credentials are excluded from Git. Never commit private exam PDFs or generated student data.
+
+## Reading OCR Markdown
+
+Open a response file in VS Code and use Markdown Preview (`Ctrl+Shift+V`). Extraction prompts
+request `$...$` inline math and separate `$$` display blocks using standard KaTeX/MathJax
+commands, with consistent page/question headings. Grading responses use `Raw score:`,
+`Marks:`, and `Feedback:` fields; raw scores remain literal source notation.
+Unclear content is marked `[unclear]` rather than guessed. These instructions improve
+format consistency but do not guarantee identical output or valid LaTeX on every run.
+
+Prompt changes apply to new extractions after restarting the local worker or rebuilding
+the Docker worker image. Existing Markdown and completed-job markers are not migrated;
+successfully cached jobs remain skipped.

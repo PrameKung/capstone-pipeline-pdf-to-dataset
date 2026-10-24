@@ -15,6 +15,33 @@ DEFAULT_MODEL = "gpt-6.1-sol"
 DEFAULT_EFFORT = "high"
 VALID_EFFORTS = {"minimal", "low", "medium", "high", "xhigh"}
 
+MARKDOWN_FORMAT = r"""
+Output contract:
+- Return Markdown only, without an introduction, summary, or outer code fence.
+- Follow image order and source reading order. Use exactly `## Page N` for each
+  original page (the first supplied page is page 2), then `### Question LABEL`
+  for each visibly labeled question. Preserve the visible label, including subparts.
+  Use `### Question unknown` when no association is visible; never invent a label.
+- Preserve the source language, mathematical errors, incomplete expressions, and
+  step order. Do not add derivations, implied steps, or missing symbols.
+- Use $...$ for inline mathematics and $$ on separate lines for display mathematics,
+  with a blank line before and after each display block. Put each standalone
+  equation or work step in its own display block, outside lists and tables.
+- Use standard KaTeX/MathJax-compatible LaTeX, such as \frac{a}{b}, \sqrt{x},
+  x_{n}, x^{2}, \pi, \omega, \sum, and \int. Use single backslashes for commands
+  in the Markdown output, not JSON-escaped double backslashes. Use \\ only for
+  row breaks inside supported environments such as aligned, cases, or bmatrix.
+- Balance delimiters and braces. Use \begin{aligned} ... \end{aligned} inside
+  one display block only when alignment is needed. Do not use \(...\), \[...\],
+  equation/align environments, custom macros, packages, document preambles,
+  equation numbering commands, HTML, or code fences for math.
+- Keep prose outside math delimiters. Escape literal currency dollars as \$.
+  Use [unclear] for unreadable content and [diagram: ...] for a brief description
+  of visible diagram features. Keep these annotations outside math blocks. If an
+  expression cannot be transcribed without guessing, report its readable fragments
+  separately with [unclear] between them; never repair the source mathematics.
+""".strip()
+
 
 def _codex_env() -> dict[str, str]:
     env = os.environ.copy()
@@ -177,12 +204,8 @@ def extract_pdf(prepared_pdf: Path, output_path: Path, state_dir: Path) -> Path:
             "Transcribe only student handwriting, equations, and diagrams. Identify student work by its context "
             "and ignore teacher marks, scores, checks, comments, and feedback. Preserve mistakes and incomplete work. "
             "Do not solve, correct, or guess unclear content. These are pages 2 onward of the original PDF; "
-            "label headings with original page numbers. Use readable Markdown with headings `## Page N` and "
-            "`### Question N`. Write all math as plain text, not LaTeX: no dollar delimiters, TeX commands, "
-            "or LaTeX environments. Use ASCII names such as `pi`, `omega`, `tau`, `sum(...)`, `integral(...)`, "
-            "`delta(...)`, and `exp(...)`; keep subscripts as underscores, such as `a_k` and `x[n]`. "
-            "Keep each equation and work step in its original order. Describe diagrams briefly in brackets. "
-            "Mark unreadable content as `[unclear]`. Return Markdown only.",
+            "label headings with original page numbers. If a page has no visible student work, write "
+            "[no visible student work] under its page heading.\n\n" + MARKDOWN_FORMAT,
             student_images,
             student_dir,
             model=model, effort=effort, timeout=timeout,
@@ -198,10 +221,13 @@ def extract_pdf(prepared_pdf: Path, output_path: Path, state_dir: Path) -> Path:
             "grading",
             "Transcribe only teacher grading marks, comments, and raw score notation from these color images. "
             "They are pages 2 onward of the original PDF. Do not re-grade, solve, or infer scores. "
-            "Mark unclear meaning or question association explicitly. Use readable Markdown with headings `## Page N` "
-            "and `### Question N` when visible. Write math and score notation as plain text, never LaTeX: no dollar "
-            "delimiters, TeX commands, or LaTeX environments. Keep raw score notation unchanged; describe marks "
-            "such as checks or crosses in words. Mark unreadable content as `[unclear]`. Return Markdown only.",
+            "Mark unclear meaning or question association explicitly. Under each question heading use these "
+            "three fields in this order: `Raw score:`, `Marks:`, `Feedback:`. Use [not visible] for an absent "
+            "field. Keep raw score notation as literal text, unchanged (do not convert a score such as 2/5 "
+            "into a LaTeX fraction or a computed value). Describe visible checks and crosses in words. "
+            "Use LaTeX for mathematical expressions in feedback, following the output contract. "
+            "If a page has no visible grading, write [no visible grading] under its page heading.\n\n"
+            + MARKDOWN_FORMAT,
             grading_images,
             grading_dir,
             model=model, effort=effort, timeout=timeout,
