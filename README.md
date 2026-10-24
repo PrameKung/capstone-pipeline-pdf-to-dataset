@@ -115,3 +115,54 @@ numbers in different exam sections. It cannot detect teacher content that OCR
 mistakenly included in student text.
 
 This is an in-memory parsing stage, not CSV export or worker integration.
+
+## Build dataset records
+
+From `backend/`, build the 36-column rows from an existing completed OCR job:
+
+```python
+from pathlib import Path
+from app.pipeline.dataset.records import build_job_records
+
+result = build_job_records(
+    Path("../raw/signal/318/1.pdf"),
+    raw_dir=Path("../raw"),
+    state_dir=Path("../.pipeline"),
+    # Optional trusted metadata keyed by exact OCR question label:
+    # questions={"1(a)": {"question_id": "your-question-id", ...}},
+)
+```
+
+Each `result["records"]` entry contains `row` (exactly the 36 dataset columns)
+and `internal` (student sections, original pages, separate teacher grading,
+review notes, and separate null extracted/verified scores). Missing cells are
+empty strings. Supplied JSON lists are serialized into JSON cell strings. No
+reference answers, rubric judgments, numeric scores, or review approvals are
+inferred. Raw teacher feedback is not copied into `grader_feedback`.
+
+Supply `questions` as a mapping from exact OCR labels to question-level fields
+from the CSV specification, including an explicit `question_id`. Difficulty
+fields also belong to this mapping. Unknown or duplicate labels remain unmapped.
+After an initial build, optional `response_metadata` can be keyed by the returned
+`response_id` to supply response-level fields such as `expected_score` or
+`rubric_analysis`. Unknown response IDs and attempts to override generated IDs or
+student text are rejected. Supplied `expected_score` is a target value only; it
+does not populate extracted or verified scores. Missing origin and sample type
+remain blank. Any supplied `student_id` must already be anonymous.
+
+Runs are atomically saved under `.pipeline/dataset/<source-key>/<attempt-id>/` as
+JSON, outside job folders that preprocessing can replace. Each run has a unique
+ID and records source/Markdown checksums and the supplied metadata. Attempt IDs
+are deterministic from relative source path and PDF checksum; changed PDFs get
+new attempt IDs. Response IDs use exact labels, or original pages and occurrence
+order for unresolved/duplicate labels. They remain stable for unchanged response
+structure; relabeling or splitting OCR sections can change IDs and requires
+reconciliation. Moving a source to a different relative path changes its identity.
+
+Existing OCR has no saved extraction manifest. Pass `extraction_config` only
+when the actual historical model/effort settings are known, and
+`extraction_source_sha256` only when recorded for that extraction. Missing values
+produce run-level review notes; a supplied checksum mismatch rejects the build.
+Use completed, idle jobs: this standalone builder does not coordinate with active
+OCR workers or prove historical source linkage. It does not validate PDF structure.
+Full record validation, CSV writing, and worker integration are subsequent stages.
