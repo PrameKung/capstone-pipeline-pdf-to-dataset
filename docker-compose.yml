@@ -29,9 +29,6 @@ services:
     build:
       context: ./backend
     command:
-      - uv
-      - run
-      - --no-sync
       - python
       - -m
       - app.pipeline.jobs.worker

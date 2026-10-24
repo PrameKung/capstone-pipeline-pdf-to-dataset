@@ -33,7 +33,7 @@ The `raw/` and `output/` roots should be configurable. Keep source PDFs, generat
 
 ## Docker
 
-Copy `.env.example` to `.env` if you need to change host paths, worker capacity, or container UID/GID. Start the backend API and polling worker with `docker compose up --build`; the API binds to `127.0.0.1:8000`. Scale worker containers with `docker compose up --build -d --scale worker=3`. All workers share the read-only `raw/` mount and writable `.pipeline/` state mount. Stop services with `docker compose down`.
+Copy `.env.example` to `.env` to configure Docker. Its settings are grouped into host folder paths, container UID/GID permissions, and worker concurrency/poll interval. Start the backend API and polling worker with `docker compose up --build`; the API binds to `127.0.0.1:8000`. Scale worker containers with `docker compose up --build -d --scale worker=3`. All workers share the read-only `raw/` mount and writable `.pipeline/` state mount. Stop services with `docker compose down`.
 
 The initial worker recursively discovers PDFs, excludes page 1, atomically claims each source, and prints a processing line. Run `make pipeline-once` to process current PDFs locally and exit. This first parallel pass only validates and prints; extraction and CSV generation are not implemented yet.
 

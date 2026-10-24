@@ -17,6 +17,16 @@ docker compose up --build -d --scale worker=3
 
 Stop containers with `docker compose down`.
 
+### Environment settings
+
+`.env.example` groups the Docker settings into three sections:
+
+- **Host folders:** `PIPELINE_RAW_HOST_DIR`, `PIPELINE_OUTPUT_HOST_DIR`, `PIPELINE_STATE_HOST_DIR`
+- **Container permissions:** `PIPELINE_UID`, `PIPELINE_GID` (set these to the values from `id -u` and `id -g` if generated files have the wrong owner)
+- **Worker capacity:** `PIPELINE_WORKERS` (parallel PDFs per container) and `PIPELINE_POLL_SECONDS` (scan interval)
+
+Defaults use the repository's `raw/`, `output/`, and `.pipeline/` folders, run two PDFs concurrently per worker container, and poll every five seconds.
+
 ## Run the local worker once
 
 ```sh
