@@ -9,7 +9,7 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
-from app.pipeline.pdf.preprocess import PREPROCESS_VERSION, cut_first_page_and_render
+from app.pipeline.pdf.preprocess import PREPROCESS_VERSION, prepare_pdf_without_first_page
 
 
 def find_pdfs(raw_dir: Path) -> list[Path]:
@@ -31,11 +31,11 @@ def _is_current(done_file: Path) -> bool:
 
 
 def process_pdf(raw_dir: Path, state_dir: Path, pdf_path: Path) -> bool:
-    """Cut the first page and render remaining pages, coordinating workers."""
+    """Prepare a PDF without page 1, coordinating workers."""
     claims_dir = state_dir / "claims"
     claims_dir.mkdir(parents=True, exist_ok=True)
     key = _claim_key(raw_dir, pdf_path)
-    done_file = claims_dir / f"{key}.rendered"
+    done_file = claims_dir / f"{key}.prepared"
     lock_file = claims_dir / f"{key}.lock"
 
     try:
@@ -49,8 +49,8 @@ def process_pdf(raw_dir: Path, state_dir: Path, pdf_path: Path) -> bool:
             return False
         relative_path = pdf_path.relative_to(raw_dir)
         job_dir = state_dir / "jobs" / relative_path.with_suffix("")
-        images = cut_first_page_and_render(pdf_path, job_dir)
-        print(f"Prepared {len(images)} pages for {relative_path.as_posix()} in {job_dir}", flush=True)
+        prepared_pdf = prepare_pdf_without_first_page(pdf_path, job_dir)
+        print(f"Prepared {relative_path.as_posix()} at {prepared_pdf}", flush=True)
         done_file.write_text(f"{PREPROCESS_VERSION}\n", encoding="utf-8")
         return True
     finally:
@@ -76,7 +76,7 @@ def run_worker(raw_dir: Path, state_dir: Path, workers: int, poll_seconds: float
             candidates = [
                 path
                 for path in find_pdfs(raw_dir)
-                if not _is_current(claims_dir / f"{_claim_key(raw_dir, path)}.rendered")
+                if not _is_current(claims_dir / f"{_claim_key(raw_dir, path)}.prepared")
                 and not (claims_dir / f"{_claim_key(raw_dir, path)}.lock").exists()
             ]
             available = workers - len(running)
@@ -91,7 +91,7 @@ def run_worker(raw_dir: Path, state_dir: Path, workers: int, poll_seconds: float
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Remove the first page and render remaining PDF pages")
+    parser = argparse.ArgumentParser(description="Prepare PDFs without their first page")
     parser.add_argument("--raw-dir", type=Path, default=Path(os.environ.get("RAW_DIR", "../raw")))
     parser.add_argument("--state-dir", type=Path, default=Path(os.environ.get("PIPELINE_DATA_DIR", "../.pipeline")))
     parser.add_argument("--workers", type=int, default=int(os.environ.get("PIPELINE_WORKERS", "2")))

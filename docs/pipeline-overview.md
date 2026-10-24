@@ -25,9 +25,9 @@ For each source file, write one CSV under the configured output directory, defau
         2.csv
 ```
 
-The original PDF remains unchanged. The example input `raw/signal/318/1.pdf` produces `output/signal/318/1.csv`. The `output/` tree contains CSV files only, using the fixed schema in [CSV output format](csv-output-format.md). Keep manifests, rendered page images, masks, extracted records, review state, and resumable job data in `.pipeline/` by default. Docker worker replicas share this directory through a local volume. Use stable relative paths in records where possible; avoid exposing machine-specific absolute paths.
+The original PDF remains unchanged. The full pipeline is intended to produce `output/signal/318/1.csv` using the fixed schema in [CSV output format](csv-output-format.md). This testing branch stops earlier: each source produces only `.pipeline/jobs/signal/318/1/pages-without-first.pdf`. Docker worker replicas share `.pipeline/` through a local volume.
 
-The first PDF page contains student credentials and must be excluded from pipeline processing and all derived artifacts. Do not render, extract, review, or export its contents. Keep the original PDF unchanged in `raw/`; process pages 2 onward and preserve their original 1-based page numbers. If a PDF has no pages after the first, mark it as failed with a clear reason and produce no CSV.
+The first PDF page contains student credentials and must be excluded from pipeline processing and all derived artifacts. Keep the original PDF unchanged in `raw/`; the prepared PDF contains pages 2 onward. If a PDF has no pages after the first, mark it as failed with a clear reason.
 
 The `raw/` and `output/` roots should be configurable. Keep source PDFs, generated artifacts, job state, and credentials out of version control.
 
@@ -35,7 +35,7 @@ The `raw/` and `output/` roots should be configurable. Keep source PDFs, generat
 
 Copy `.env.example` to `.env` to configure Docker. Its settings are grouped into host folder paths, container UID/GID permissions, and worker concurrency/poll interval. Start the backend API and polling worker with `docker compose up --build`; the API binds to `127.0.0.1:8000`. Scale worker containers with `docker compose up --build -d --scale worker=3`. All workers share the read-only `raw/` mount and writable `.pipeline/` state mount. Stop services with `docker compose down`.
 
-The worker recursively discovers PDFs, atomically claims each source, removes page 1 into a working PDF, and renders the remaining pages under `.pipeline/`. Run `make pipeline-once` to process current PDFs locally and exit. Answer extraction and CSV creation are not implemented yet.
+The worker recursively discovers PDFs, atomically claims each source, and saves pages 2 onward as a working PDF under `.pipeline/`. Run `make pipeline-once` to process current PDFs locally and exit. Rendering, answer extraction, and CSV creation are not implemented on this branch.
 
 Use Git and GitHub to version source code, configuration templates, and documentation. Ensure `raw/`, `output/`, local worker state, credentials, and private exam data are ignored by Git.
 
@@ -50,16 +50,9 @@ Treat each PDF as one attempt and keep its anonymous IDs stable across reruns. A
 ```text
 local input PDFs
   -> validate and identify source
-  -> render PDF pages
-  -> create a red-channel grayscale student view (no red-ink detection)
-  -> map question regions
-  -> extract student answers and teacher grading separately
-  -> validate, preserve evidence, and flag uncertainty
-  -> human review
-  -> export datasets
+  -> remove page 1
+  -> save prepared PDF under .pipeline/jobs/
 ```
-
-Student extraction sees only the student view and permitted question metadata. Grading extraction sees the original graded crop. Keep those passes isolated so teacher scores and comments cannot enter student-answer text or grader inputs.
 
 ## Data quality rules
 

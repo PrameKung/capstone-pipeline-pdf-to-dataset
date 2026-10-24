@@ -2,6 +2,8 @@
 
 This document describes the expected behavior of a local batch run. Adapt module names and commands to the implementation as it is built; do not document commands that the repository does not yet provide as if they already work.
 
+This testing branch implements only the PDF preparation step: remove page 1 and save the prepared PDF. Later stages below describe the broader pipeline goal and are not run on this branch.
+
 Use Git and GitHub for version control of the project. Do not commit PDFs, generated CSVs, temporary workspaces, job state, credentials, or private exam data.
 
 ## Run lifecycle
@@ -32,13 +34,12 @@ Use `.pipeline/` as the default local state directory for manifests, checkpoints
 ## Processing stages
 
 1. **Discover and validate** — recursively find PDFs under `raw/` (for example, `raw/signal/318/1.pdf`); validate that each file can be opened; calculate a checksum; assign anonymous IDs. Treat each PDF as one attempt. Persist its attempt ID so reruns keep it stable; create a new attempt ID if the source file changes. Never use a real student identifier in public output filenames.
-2. **Exclude identity page and render** — never process the first page, which contains student credentials. Keep the source PDF unchanged and render only pages 2 onward with PyMuPDF at configurable 200–300 DPI. Keep original 1-based page numbers in evidence and records. Record source page count and render settings without extracting first-page content. If no pages remain, fail the job and produce no CSV. Handle scanned PDFs without a text layer.
-3. **Prepare student view** — save the untouched render and a grayscale student view derived from the red channel. This reduces red-mark contrast without detecting or masking red pixels or whitening adjacent writing.
-4. **Map questions** — use known exam metadata and layout rules first. Record question IDs, page spans, and bounding boxes. Mark uncertain mappings for review instead of guessing. Preserve an answer whose question cannot be mapped as a response row with a blank question ID and `needs_review` status.
-5. **Extract student answers** — run an isolated Codex CLI pass using student-view crops only. Transcribe handwriting, symbols, and math faithfully; preserve order, errors, and incomplete steps. Reference diagrams through retained image evidence. Mark unreadable spans as uncertain.
-6. **Extract teacher grading** — run a separate Codex CLI pass using untouched original crops. Record literal marks, comments, raw scores, and possible maximum scores. Do not infer a score from checkmarks or evaluate the student's work. Use a null interpreted score when meaning or question association is ambiguous.
-7. **Validate and review** — validate structured outputs, page references, mappings, score bounds when known, and separation of student and grading fields. Put only uncertain or failed rows in the review queue; do not require review of every extracted row or CSV. A parsed result is not human-verified. Preserve human corrections as revisions.
-8. **Export** — write one CSV per source PDF under `output/`, preserving its relative parent folders and filename. Keep all non-CSV working artifacts outside `output/`. Include only the approved dataset fields in the CSV, and do not treat unverified scores as verified ground truth.
+2. **Prepare PDF** — never process the first page, which contains student credentials. Keep the source PDF unchanged and save pages 2 onward as `pages-without-first.pdf`. If no pages remain, fail the job. This branch does not render pages or create other artifacts.
+3. **Map questions** — use known exam metadata and layout rules first. Record question IDs, page spans, and bounding boxes. Mark uncertain mappings for review instead of guessing. Preserve an answer whose question cannot be mapped as a response row with a blank question ID and `needs_review` status.
+4. **Extract student answers** — run an isolated Codex CLI pass using student-view crops only. Transcribe handwriting, symbols, and math faithfully; preserve order, errors, and incomplete steps. Reference diagrams through retained image evidence. Mark unreadable spans as uncertain.
+5. **Extract teacher grading** — run a separate Codex CLI pass using untouched original crops. Record literal marks, comments, raw scores, and possible maximum scores. Do not infer a score from checkmarks or evaluate the student's work. Use a null interpreted score when meaning or question association is ambiguous.
+6. **Validate and review** — validate structured outputs, page references, mappings, score bounds when known, and separation of student and grading fields. Put only uncertain or failed rows in the review queue; do not require review of every extracted row or CSV. A parsed result is not human-verified. Preserve human corrections as revisions.
+7. **Export** — write one CSV per source PDF under `output/`, preserving its relative parent folders and filename. Keep all non-CSV working artifacts outside `output/`. Include only the approved dataset fields in the CSV, and do not treat unverified scores as verified ground truth.
 
 ## Codex CLI requirements
 
@@ -58,7 +59,7 @@ raw/signal/318/1.pdf
   -> output/signal/318/1.csv
 ```
 
-Keep manifests, original copies if needed, page renders for pages 2 onward, masks, extracted records, logs, and resumable job state under a separate local work directory (for example, `.pipeline/`). Do not place these files in `output/`. Never store a rendered or extracted copy of page 1. Use anonymous, stable identifiers in CSV records. Include source-relative paths and original page references so records can be traced without relying on absolute local paths.
+Keep the prepared PDF and resumable job state under `.pipeline/`. Do not place intermediate files in `output/`. Never include page 1 in the prepared PDF. Use anonymous, stable identifiers in eventual CSV records and avoid machine-specific absolute paths.
 
 For example, `raw/signal/318/1.pdf` maps to `output/signal/318/1.csv`.
 
@@ -70,4 +71,4 @@ Use the fixed header, column meanings, and encoding rules in [CSV output format]
 
 Before claiming the pipeline works, verify with synthetic fixtures that are safe to commit. If a real sample PDF is available locally, use it only for manual quality review and do not publish its personal data.
 
-Check PDF validation/rendering, recursive discovery under `raw/`, mirrored CSV paths (including `raw/signal/318/1.pdf` mapping to `output/signal/318/1.csv`), red-channel student views, question mapping, ambiguous score handling, student/grading isolation, resume behavior, schema validation, and CSV export. Verify that `output/` contains CSV files only. Report which checks ran and whether real Codex authentication or sample-PDF accuracy was not verified.
+Check PDF validation, recursive discovery under `raw/`, first-page removal, and that each job folder contains only `pages-without-first.pdf`. Extraction and CSV export are outside this branch's scope.

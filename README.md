@@ -1,6 +1,6 @@
 # Local PDF Pipeline
 
-Local pipeline for processing PDFs stored under `raw/`. The worker recursively finds PDFs, removes the first page into a local working copy, then saves untouched grading renders and red-channel grayscale student views under a clearly named job folder in `.pipeline/jobs/`. It does not detect or mask red ink. Answer extraction and CSV generation are not implemented yet.
+This testing branch recursively finds PDFs under `raw/` and creates one prepared PDF per source, with page 1 removed. The job folder under `.pipeline/jobs/` contains only `pages-without-first.pdf`. Rendering, student views, extraction, and CSV generation are not part of this branch.
 
 ## Run with Docker
 
@@ -34,7 +34,7 @@ make backend-sync
 make pipeline-once
 ```
 
-Set `PIPELINE_WORKERS` to change the number of concurrent PDFs per worker process. Docker replicas share `.pipeline/` and atomically claim each PDF path. A path is skipped after successful rendering; replacing its PDF does not currently trigger a rerun.
+Set `PIPELINE_WORKERS` to change the number of concurrent PDFs per worker process. Docker replicas share `.pipeline/` and atomically claim each PDF path. A path is skipped after successful preparation; replacing its PDF does not currently trigger a rerun.
 
 ## Local data
 
