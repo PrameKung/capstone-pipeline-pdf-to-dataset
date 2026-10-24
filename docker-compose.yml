@@ -1,4 +1,16 @@
 services:
+  tests:
+    profiles: [test]
+    build:
+      context: ./backend
+    command: [python, -m, unittest, discover, -s, tests, -v]
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - ./backend/tests:/app/tests:ro
+      - ${PIPELINE_STATE_HOST_DIR:-./.pipeline}:/data/.pipeline
+    user: "${PIPELINE_UID:-0}:${PIPELINE_GID:-0}"
+
   backend:
     build:
       context: ./backend
@@ -28,6 +40,8 @@ services:
   worker:
     build:
       context: ./backend
+    deploy:
+      replicas: ${PIPELINE_WORKER_REPLICAS:-1}
     command:
       - python
       - -m
@@ -35,10 +49,24 @@ services:
     environment:
       RAW_DIR: /data/raw
       PIPELINE_DATA_DIR: /data/.pipeline
-      PIPELINE_WORKERS: ${PIPELINE_WORKERS:-2}
+      PIPELINE_WORKERS: ${PIPELINE_WORKERS:-1}
       PIPELINE_POLL_SECONDS: ${PIPELINE_POLL_SECONDS:-5}
+      PIPELINE_OCR_ENABLED: ${PIPELINE_OCR_ENABLED:-1}
+      PIPELINE_CODEX_MODEL: ${PIPELINE_CODEX_MODEL:-}
+      PIPELINE_CODEX_EFFORT: ${PIPELINE_CODEX_EFFORT:-}
+      PIPELINE_CODEX_TIMEOUT_SECONDS: ${PIPELINE_CODEX_TIMEOUT_SECONDS:-}
+      PIPELINE_OCR_MAX_IMAGE_SIDE: ${PIPELINE_OCR_MAX_IMAGE_SIDE:-}
+      PIPELINE_OCR_CAPACITY: ${PIPELINE_OCR_CAPACITY:-}
+      CODEX_AUTH_FILE: /run/codex-auth/auth.json
+      PIPELINE_CODEX_HOME: /tmp/pipeline-codex
     volumes:
       - ${PIPELINE_RAW_HOST_DIR:-./raw}:/data/raw:ro
       - ${PIPELINE_STATE_HOST_DIR:-./.pipeline}:/data/.pipeline
+      - type: bind
+        source: ${CODEX_AUTH_FILE_HOST:-${HOME:-.}/.codex/auth.json}
+        target: /run/codex-auth/auth.json
+        read_only: true
+        bind:
+          create_host_path: false
     user: "${PIPELINE_UID:-0}:${PIPELINE_GID:-0}"
     restart: unless-stopped

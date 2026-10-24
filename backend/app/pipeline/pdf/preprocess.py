@@ -6,17 +6,21 @@ import json
 import os
 import shutil
 import uuid
+from dataclasses import asdict
 from pathlib import Path
 
 import cv2
-import numpy as np
 import pymupdf
 
-PREPROCESS_VERSION = 9
-RED_HUE_RANGES = ((0, 20), (160, 180))
-RED_MIN_SATURATION = 15
-RED_MIN_VALUE = 20
-RED_MIN_CHANNEL_MARGIN = 8
+from app.pipeline.jobs.state import checksum
+
+from app.pipeline.pdf.student_view import (
+    DEFAULT_STUDENT_VIEW_CONFIG,
+    StudentViewConfig,
+    compute_student_view,
+)
+
+PREPROCESS_VERSION = 11
 
 
 def make_student_view(
@@ -24,84 +28,80 @@ def make_student_view(
     red_mask_path: Path,
     student_image_path: Path,
     overlap_candidates_path: Path,
+    *,
+    removal_mask_path: Path | None = None,
+    teacher_image_path: Path | None = None,
+    config: StudentViewConfig = DEFAULT_STUDENT_VIEW_CONFIG,
 ) -> int:
-    """Save red-ink evidence and a grayscale student view from the red channel.
+    """Save conservative red removal artifacts; return the detected pixel count."""
+    counts = _save_student_view(
+        grading_image, red_mask_path, student_image_path, overlap_candidates_path,
+        removal_mask_path=removal_mask_path, teacher_image_path=teacher_image_path, config=config,
+    )
+    return counts["detected_red_pixels"]
 
-    Red ink is usually much lighter in the red channel than in the other
-    channels. Using it for the student view suppresses red without deleting
-    nearby dark writing. The input grading image is never changed; possible
-    dark-writing overlaps are saved separately for inspection.
-    """
+
+def _save_student_view(
+    grading_image: Path,
+    red_mask_path: Path,
+    student_image_path: Path,
+    overlap_candidates_path: Path,
+    *,
+    removal_mask_path: Path | None,
+    teacher_image_path: Path | None,
+    config: StudentViewConfig,
+) -> dict[str, int]:
     image = cv2.imread(str(grading_image), cv2.IMREAD_COLOR)
     if image is None:
         raise ValueError(f"Could not read rendered page: {grading_image.name}")
-
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    low_red = cv2.inRange(
-        hsv,
-        np.array((RED_HUE_RANGES[0][0], RED_MIN_SATURATION, RED_MIN_VALUE)),
-        np.array((RED_HUE_RANGES[0][1], 255, 255)),
-    )
-    high_red = cv2.inRange(
-        hsv,
-        np.array((RED_HUE_RANGES[1][0], RED_MIN_SATURATION, RED_MIN_VALUE)),
-        np.array((RED_HUE_RANGES[1][1], 255, 255)),
-    )
-    red_mask = cv2.bitwise_or(low_red, high_red)
-
-    # Require red to be measurably stronger than both other color channels.
-    blue, green, red = cv2.split(image)
-    red_channel = red.astype(np.int16)
-    red_dominant = (
-        (red_channel - green.astype(np.int16) >= RED_MIN_CHANNEL_MARGIN)
-        & (red_channel - blue.astype(np.int16) >= RED_MIN_CHANNEL_MARGIN)
-    )
-    red_mask = cv2.bitwise_and(red_mask, red_dominant.astype(np.uint8) * 255)
-    # Bridge tiny breaks in detected strokes without expanding into nearby paper.
-    red_mask = cv2.morphologyEx(
-        red_mask,
-        cv2.MORPH_CLOSE,
-        np.ones((7, 7), dtype=np.uint8),
-        iterations=1,
-    )
-
-    # Flag dark pixels close to detected red marks as possible overlaps.
-    nearby_red = cv2.dilate(red_mask, np.ones((7, 7), dtype=np.uint8), iterations=1)
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    dark_pixels = cv2.threshold(gray, 110, 255, cv2.THRESH_BINARY_INV)[1]
-    overlap_candidates = cv2.bitwise_and(nearby_red, dark_pixels)
-    overlap_candidates = cv2.bitwise_and(overlap_candidates, cv2.bitwise_not(red_mask))
-
-    # A red-channel grayscale view fades red ink without expanding a binary
-    # mask across adjacent student strokes. Keep the untouched color render for
-    # teacher-mark extraction and provenance.
-    student_view = cv2.cvtColor(red, cv2.COLOR_GRAY2BGR)
-
-    for path, data in (
-        (red_mask_path, red_mask),
-        (student_image_path, student_view),
-        (overlap_candidates_path, overlap_candidates),
-    ):
+    result = compute_student_view(image, config)
+    artifacts = [
+        (red_mask_path, result.red_mask),
+        (student_image_path, result.student_view),
+        (overlap_candidates_path, result.overlap_candidates),
+    ]
+    if removal_mask_path is not None:
+        artifacts.append((removal_mask_path, result.removal_mask))
+    if teacher_image_path is not None:
+        artifacts.append((teacher_image_path, result.teacher_view))
+    for path, data in artifacts:
         path.parent.mkdir(parents=True, exist_ok=True)
         if not cv2.imwrite(str(path), data):
             raise OSError(f"Could not write preprocessing image: {path.name}")
+    return result.counts
 
-    return int(cv2.countNonZero(red_mask))
+
+def _write_view_pdf(
+    image_paths: list[Path],
+    page_sizes: list[tuple[float, float]],
+    destination: Path,
+) -> None:
+    """Embed only derived images; never carry source text, metadata, or layers."""
+    with pymupdf.open() as document:
+        for image_path, (width, height) in zip(image_paths, page_sizes, strict=True):
+            page = document.new_page(width=width, height=height)
+            page.insert_image(page.rect, filename=str(image_path))
+        document.set_page_labels([{"startpage": 0, "style": "D", "firstpagenum": 2}])
+        document.set_toc([[1, f"Source page {index + 2}", index + 1] for index in range(len(image_paths))])
+        document.save(destination, garbage=4, deflate=True)
 
 
 def cut_first_page_and_render(
     source_pdf: Path,
     artifact_dir: Path,
     dpi: int = 250,
+    *,
+    student_view_config: StudentViewConfig = DEFAULT_STUDENT_VIEW_CONFIG,
 ) -> list[Path]:
     """Create a page-1-free working PDF and render it, preserving source page numbers.
 
     The input stays unchanged. The job folder contains the page-1-free working
-    PDF, untouched grading renders, red masks, student views, and overlap
-    candidate masks. The credential page is never rendered.
+    PDF, untouched grading renders, masks, student/teacher views and their PDF
+    bundles. The credential page is never rendered or included in either bundle.
     """
     if dpi < 1:
         raise ValueError("dpi must be at least 1")
+    source_sha256 = checksum(source_pdf)
 
     artifact_dir = artifact_dir.resolve()
     artifact_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -123,43 +123,66 @@ def cut_first_page_and_render(
         grading_dir = staging_dir / "grading-view"
         grading_dir.mkdir()
         rendered_paths = []
+        page_sizes = []
         scale = dpi / 72
         with pymupdf.open(sanitized_pdf) as sanitized:
             for page_index in range(sanitized.page_count):
                 original_page_number = page_index + 2
+                page_sizes.append((sanitized[page_index].rect.width, sanitized[page_index].rect.height))
                 image_path = grading_dir / f"page-{original_page_number:03}.png"
                 pixmap = sanitized[page_index].get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False)
                 pixmap.save(image_path)
                 rendered_paths.append(image_path)
 
-        red_pixel_counts = {}
+        page_statistics = {}
         for image_path in rendered_paths:
             page_name = image_path.name
-            red_pixel_counts[page_name] = make_student_view(
+            page_statistics[page_name] = _save_student_view(
                 image_path,
                 staging_dir / "red-masks" / page_name,
                 staging_dir / "student-view" / page_name,
                 staging_dir / "overlap-candidates" / page_name,
+                removal_mask_path=staging_dir / "removal-masks" / page_name,
+                teacher_image_path=staging_dir / "teacher-view" / page_name,
+                config=student_view_config,
+            )
+
+        for view in ("student", "teacher"):
+            _write_view_pdf(
+                [staging_dir / f"{view}-view" / path.name for path in rendered_paths],
+                page_sizes,
+                staging_dir / f"{view}.pdf",
             )
 
         summary = {
             "preprocess_version": PREPROCESS_VERSION,
+            "source_sha256": source_sha256,
             "source_name": source_pdf.name,
             "render_dpi": dpi,
             "processed_original_pages": [
                 int(path.stem.removeprefix("page-")) for path in rendered_paths
             ],
-            "red_pixel_counts": red_pixel_counts,
-            "red_mask": {
-                "hue_ranges": [list(bounds) for bounds in RED_HUE_RANGES],
-                "minimum_saturation": RED_MIN_SATURATION,
-                "minimum_value": RED_MIN_VALUE,
-                "minimum_red_channel_margin": RED_MIN_CHANNEL_MARGIN,
-                "mask_operation": "7x7 morphological close to bridge gaps; used for evidence and overlap flags",
-                "overlap_candidate_dilation_kernel": 7,
+            "red_pixel_counts": {
+                name: counts["detected_red_pixels"] for name, counts in page_statistics.items()
             },
-            "student_view": "Grayscale from the red channel to reduce red-mark contrast without whitening adjacent student writing. Untouched color renders are retained for grading evidence.",
+            "page_statistics": page_statistics,
+            "student_view_method": "color_seeded_local_paper_v1",
+            "student_view_config": asdict(student_view_config),
+            "view_pdfs": {
+                "student": "student.pdf",
+                "teacher": "teacher.pdf",
+                "page_labels": "Original source page numbers, starting at 2",
+            },
+            "teacher_view": "Original colors of detected red candidates on white; includes uncertain red. No original page image, text layer, or hidden handwriting is embedded. Color does not identify the author; untouched grading renders remain authoritative evidence.",
+            "red_mask": {
+                "mask_operation": "Color candidates only; no geometric closing or expansion for removal",
+                "removal_masks": "Only pixels actually replaced using reliable local paper samples",
+                "overlap_candidates": "Retained red candidates and nearby writing; includes uncertain color and background",
+            },
+            "student_view": "Red-channel grayscale with confident red pixels replaced by local paper brightness. Suspected overlaps and uncertain pixels retain the baseline; hidden writing is never reconstructed. Untouched color renders remain grading evidence.",
         }
+        if checksum(source_pdf) != source_sha256:
+            raise ValueError("Source PDF changed during preprocessing; retry after the copy finishes")
         (staging_dir / "preprocessing.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 
         if artifact_dir.exists():

@@ -35,7 +35,7 @@ The `raw/` and `output/` roots should be configurable. Keep source PDFs, generat
 
 Copy `.env.example` to `.env` to configure Docker. Its settings are grouped into host folder paths, container UID/GID permissions, and worker concurrency/poll interval. Start the backend API and polling worker with `docker compose up --build`; the API binds to `127.0.0.1:8000`. Scale worker containers with `docker compose up --build -d --scale worker=3`. All workers share the read-only `raw/` mount and writable `.pipeline/` state mount. Stop services with `docker compose down`.
 
-The worker recursively discovers PDFs, atomically claims each source, removes page 1 into a working PDF, and renders the remaining pages under `.pipeline/`. Run `make pipeline-once` to process current PDFs locally and exit. Answer extraction and CSV creation are not implemented yet.
+The Docker worker discovers PDFs, checks SHA-256, claims each source, excludes page 1, renders/separates views, and runs independent student/teacher Codex OCR. Run `docker compose run --rm worker python -m app.pipeline.jobs.worker --once` for a batch. See the README for the required read-only ChatGPT auth-file mount and preflight command. Separate and combined Markdown are published under `.pipeline/ocr/`; CSV creation remains planned.
 
 Use Git and GitHub to version source code, configuration templates, and documentation. Ensure `raw/`, `output/`, local worker state, credentials, and private exam data are ignored by Git.
 
@@ -59,7 +59,7 @@ local input PDFs
   -> export datasets
 ```
 
-Student extraction sees only the student view and permitted question metadata. Grading extraction sees the original graded crop and red-ink evidence. Keep those passes isolated so teacher scores and comments cannot enter student-answer text or grader inputs.
+Student extraction receives only the prepared student page image. Current teacher extraction receives only the red-only teacher page image; untouched grading renders remain local evidence. Both passes use separate calls/workspaces and schemas. Question association may be unavailable in the red-only view and must be flagged rather than inferred. Residual grading can remain in student images, so separation is not a guarantee of semantic cleanliness. Structured scores and teacher feedback are never passed to student extraction.
 
 ## Data quality rules
 

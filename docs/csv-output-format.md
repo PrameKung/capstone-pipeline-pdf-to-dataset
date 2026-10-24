@@ -34,7 +34,7 @@ response_id,attempt_id,question_id,subquestion_id,answer_text,answer_evidence_pa
 | `grading_status` | `extracted`, `needs_review`, `human_verified`, or `failed` for grading data. |
 | `review_notes` | Brief uncertainty or reviewer note; blank when none. |
 | `source_pdf` | Source path relative to `raw/`, e.g. `signal/318/1.pdf`. |
-| `source_pages` | JSON array of 1-based source page numbers, e.g. `[1,2]`. |
+| `source_pages` | JSON array of original source page numbers, excluding page 1, e.g. `[2,3]`. |
 | `source_sha256` | SHA-256 checksum of the source PDF. |
 | `run_id` | Unique ID for the processing run. |
 | `student_model`, `student_effort` | Codex model and reasoning effort used for student extraction. |

@@ -9,6 +9,10 @@
 
 # Local secrets and Python environments
 .env
+/auth.json
+/.codex/auth.json
+/.codex/sessions/
+/.codex/log/
 .venv/
 __pycache__/
 *.py[cod]
