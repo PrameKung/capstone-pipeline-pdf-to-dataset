@@ -60,6 +60,7 @@ def check_codex() -> str:
     login_text = (login_result.stdout + login_result.stderr).lower()
     if login_result.returncode or "logged in using chatgpt" not in login_text:
         raise RuntimeError("Sign in to Codex with your ChatGPT subscription using `codex login`.")
+    print("Codex account status: Logged in using ChatGPT", flush=True)
     return codex
 
 
@@ -116,6 +117,17 @@ def _run_pass(
     return result_path.read_text(encoding="utf-8").strip()
 
 
+def _save_markdown(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    staging = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        staging.write_text(content.rstrip() + "\n", encoding="utf-8")
+        os.replace(staging, path)
+    except Exception:
+        staging.unlink(missing_ok=True)
+        raise
+
+
 def extract_pdf(prepared_pdf: Path, output_path: Path, state_dir: Path) -> Path:
     """Write student and teacher OCR Markdown for a worker's prepared PDF."""
     prepared_pdf = prepared_pdf.resolve()
@@ -149,6 +161,12 @@ def extract_pdf(prepared_pdf: Path, output_path: Path, state_dir: Path) -> Path:
             student_dir,
             model=os.environ.get("PIPELINE_CODEX_MODEL"), effort=effort, timeout=timeout,
         )
+        student_response_path = output_path.with_name("student-response.md")
+        _save_markdown(student_response_path, student)
+        print(
+            f"Saved Codex student response: {student_response_path.relative_to(state_dir).as_posix()}",
+            flush=True,
+        )
         grading = _run_pass(
             codex,
             "grading",
@@ -159,13 +177,12 @@ def extract_pdf(prepared_pdf: Path, output_path: Path, state_dir: Path) -> Path:
             grading_dir,
             model=os.environ.get("PIPELINE_CODEX_MODEL"), effort=effort, timeout=timeout,
         )
+        grading_response_path = output_path.with_name("grading-response.md")
+        _save_markdown(grading_response_path, grading)
+        print(
+            f"Saved Codex grading response: {grading_response_path.relative_to(state_dir).as_posix()}",
+            flush=True,
+        )
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    staging = output_path.with_name(f".{output_path.name}.{os.getpid()}.tmp")
-    try:
-        staging.write_text(f"# OCR extraction\n\n## Student work\n\n{student}\n\n## Teacher grading\n\n{grading}\n", encoding="utf-8")
-        os.replace(staging, output_path)
-    except Exception:
-        staging.unlink(missing_ok=True)
-        raise
+    _save_markdown(output_path, f"# OCR extraction\n\n## Student work\n\n{student}\n\n## Teacher grading\n\n{grading}")
     return output_path

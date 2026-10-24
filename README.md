@@ -1,6 +1,6 @@
 # Local PDF Pipeline
 
-This testing branch recursively finds PDFs under `raw/`, removes page 1 from each working copy, and runs Codex OCR. Each job folder under `.pipeline/jobs/` contains `pages-without-first.pdf` and `ocr.md`. CSV generation is not implemented on this branch.
+This testing branch recursively finds PDFs under `raw/`, removes page 1 from each working copy, and runs Codex OCR. Each job folder under `.pipeline/jobs/` contains `pages-without-first.pdf`, the separate `student-response.md` and `grading-response.md`, and combined `ocr.md`. CSV generation is not implemented on this branch.
 
 ## Run with Docker
 
