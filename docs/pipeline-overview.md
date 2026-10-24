@@ -71,4 +71,4 @@ Student extraction sees only the student view and permitted question metadata. G
 - AI output is an extraction proposal, not verified ground truth. Uncertain results require human review.
 - Review only exceptions marked `needs_review` or `failed`; do not require reviewing every row or every CSV before export.
 
-See [pipeline behavior](pipeline-behavior.md) for detailed stage requirements and expected run contents.
+See [pipeline status](pipeline-status.md) for the current implementation progress and next milestone. See [pipeline behavior](pipeline-behavior.md) for detailed stage requirements and expected run contents.
