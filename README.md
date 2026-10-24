@@ -1,6 +1,6 @@
 # Local PDF Pipeline
 
-Local worker scaffold for processing PDFs stored under `raw/`. The worker recursively discovers PDFs, excludes credential page 1, validates the remaining page count, and prints each claimed file. Extraction and CSV generation are not implemented yet.
+Local worker scaffold for processing PDFs stored under `raw/`. The worker recursively finds PDF files and prints each filename once. Extraction and CSV generation are not implemented yet.
 
 ## Run with Docker
 
