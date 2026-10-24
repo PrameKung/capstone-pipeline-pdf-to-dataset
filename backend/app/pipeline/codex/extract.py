@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -10,6 +11,7 @@ from pathlib import Path
 
 import pymupdf
 
+DEFAULT_MODEL = "gpt-6.1-sol"
 DEFAULT_EFFORT = "high"
 VALID_EFFORTS = {"minimal", "low", "medium", "high", "xhigh"}
 
@@ -45,7 +47,7 @@ def _codex_env() -> dict[str, str]:
     return env
 
 
-def check_codex() -> str:
+def check_codex(model: str, effort: str) -> str:
     codex = shutil.which("codex")
     if not codex:
         raise RuntimeError("Codex CLI is unavailable. Install it and run `codex login` first.")
@@ -60,6 +62,24 @@ def check_codex() -> str:
     login_text = (login_result.stdout + login_result.stderr).lower()
     if login_result.returncode or "logged in using chatgpt" not in login_text:
         raise RuntimeError("Sign in to Codex with your ChatGPT subscription using `codex login`.")
+
+    models_result = subprocess.run(
+        [codex, "debug", "models"], capture_output=True, text=True, env=env, timeout=60
+    )
+    if models_result.returncode:
+        raise RuntimeError("Could not check Codex model availability; check CLI access and try again.")
+    try:
+        model_catalog = json.loads(models_result.stdout)
+        selected_model = next(item for item in model_catalog["models"] if item["slug"] == model)
+    except (KeyError, StopIteration, json.JSONDecodeError, TypeError) as exc:
+        raise RuntimeError(f"Codex model `{model}` is not available in the current model catalog.") from exc
+    supported_efforts = {
+        item.get("effort") for item in selected_model.get("supported_reasoning_levels", [])
+    }
+    if effort not in supported_efforts:
+        supported = ", ".join(sorted(value for value in supported_efforts if value)) or "none listed"
+        raise RuntimeError(f"Codex model `{model}` does not support effort `{effort}` (supports: {supported}).")
+
     print("Codex account status: Logged in using ChatGPT", flush=True)
     return codex
 
@@ -140,7 +160,8 @@ def extract_pdf(prepared_pdf: Path, output_path: Path, state_dir: Path) -> Path:
     if effort not in VALID_EFFORTS:
         raise ValueError(f"PIPELINE_CODEX_EFFORT must be one of {', '.join(sorted(VALID_EFFORTS))}.")
     timeout = int(os.environ.get("PIPELINE_CODEX_TIMEOUT_SECONDS", "1800"))
-    codex = check_codex()
+    model = os.environ.get("PIPELINE_CODEX_MODEL", DEFAULT_MODEL)
+    codex = check_codex(model, effort)
     dpi = int(os.environ.get("PIPELINE_CODEX_RENDER_DPI", "200"))
 
     with tempfile.TemporaryDirectory(prefix=".codex-", dir=state_dir) as temp:
@@ -156,10 +177,15 @@ def extract_pdf(prepared_pdf: Path, output_path: Path, state_dir: Path) -> Path:
             "Transcribe only student handwriting, equations, and diagrams. Identify student work by its context "
             "and ignore teacher marks, scores, checks, comments, and feedback. Preserve mistakes and incomplete work. "
             "Do not solve, correct, or guess unclear content. These are pages 2 onward of the original PDF; "
-            "label headings with original page numbers. Return Markdown only.",
+            "label headings with original page numbers. Use readable Markdown with headings `## Page N` and "
+            "`### Question N`. Write all math as plain text, not LaTeX: no dollar delimiters, TeX commands, "
+            "or LaTeX environments. Use ASCII names such as `pi`, `omega`, `tau`, `sum(...)`, `integral(...)`, "
+            "`delta(...)`, and `exp(...)`; keep subscripts as underscores, such as `a_k` and `x[n]`. "
+            "Keep each equation and work step in its original order. Describe diagrams briefly in brackets. "
+            "Mark unreadable content as `[unclear]`. Return Markdown only.",
             student_images,
             student_dir,
-            model=os.environ.get("PIPELINE_CODEX_MODEL"), effort=effort, timeout=timeout,
+            model=model, effort=effort, timeout=timeout,
         )
         student_response_path = output_path.with_name("student-response.md")
         _save_markdown(student_response_path, student)
@@ -172,10 +198,13 @@ def extract_pdf(prepared_pdf: Path, output_path: Path, state_dir: Path) -> Path:
             "grading",
             "Transcribe only teacher grading marks, comments, and raw score notation from these color images. "
             "They are pages 2 onward of the original PDF. Do not re-grade, solve, or infer scores. "
-            "Mark unclear meaning or question association explicitly. Return Markdown only.",
+            "Mark unclear meaning or question association explicitly. Use readable Markdown with headings `## Page N` "
+            "and `### Question N` when visible. Write math and score notation as plain text, never LaTeX: no dollar "
+            "delimiters, TeX commands, or LaTeX environments. Keep raw score notation unchanged; describe marks "
+            "such as checks or crosses in words. Mark unreadable content as `[unclear]`. Return Markdown only.",
             grading_images,
             grading_dir,
-            model=os.environ.get("PIPELINE_CODEX_MODEL"), effort=effort, timeout=timeout,
+            model=model, effort=effort, timeout=timeout,
         )
         grading_response_path = output_path.with_name("grading-response.md")
         _save_markdown(grading_response_path, grading)
