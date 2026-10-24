@@ -63,15 +63,14 @@ def check_codex() -> str:
     return codex
 
 
-def _render(prepared_pdf: Path, target: Path, *, grayscale: bool, dpi: int) -> list[Path]:
+def _render(prepared_pdf: Path, target: Path, dpi: int) -> list[Path]:
     if not 72 <= dpi <= 400:
         raise ValueError("PIPELINE_CODEX_RENDER_DPI must be between 72 and 400.")
     target.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
-    colorspace = pymupdf.csGRAY if grayscale else pymupdf.csRGB
     with pymupdf.open(prepared_pdf) as document:
         for index, page in enumerate(document):
-            pixmap = page.get_pixmap(dpi=dpi, colorspace=colorspace, alpha=False)
+            pixmap = page.get_pixmap(dpi=dpi, colorspace=pymupdf.csRGB, alpha=False)
             image_path = target / f"page-{index + 2:04}.png"
             pixmap.save(image_path)
             paths.append(image_path)
@@ -90,6 +89,7 @@ def _run_pass(
     timeout: int,
 ) -> str:
     result_path = work_dir / "result.md"
+    print(f"Codex CLI working: {name} extraction ({len(image_paths)} pages)", flush=True)
     command = [
         codex, "exec", "--cd", str(work_dir), "--skip-git-repo-check", "--ephemeral",
         "--sandbox", "read-only", "--config", f'model_reasoning_effort="{effort}"',
@@ -112,6 +112,7 @@ def _run_pass(
         raise RuntimeError(f"Codex {name} extraction failed (exit {result.returncode}): {message}")
     if not result_path.is_file() or not result_path.read_text(encoding="utf-8").strip():
         raise RuntimeError(f"Codex {name} extraction returned no Markdown.")
+    print(f"Codex CLI completed: {name} extraction", flush=True)
     return result_path.read_text(encoding="utf-8").strip()
 
 
@@ -133,15 +134,17 @@ def extract_pdf(prepared_pdf: Path, output_path: Path, state_dir: Path) -> Path:
     with tempfile.TemporaryDirectory(prefix=".codex-", dir=state_dir) as temp:
         work = Path(temp)
         student_dir, grading_dir = work / "student", work / "grading"
-        student_images = _render(prepared_pdf, student_dir, grayscale=True, dpi=dpi)
-        grading_images = _render(prepared_pdf, grading_dir, grayscale=False, dpi=dpi)
+        # Both passes receive full-color page renders from the same prepared PDF.
+        student_images = _render(prepared_pdf, student_dir, dpi)
+        grading_images = _render(prepared_pdf, grading_dir, dpi)
         student = _run_pass(
             codex,
             "student",
-            "Transcribe only student handwriting, equations, and diagrams from these grayscale images. "
-            "They are pages 2 onward of the original PDF. Preserve mistakes and incomplete work. "
-            "Do not solve, correct, or guess unclear content. Exclude teacher marks, scores, and feedback. "
-            "Return Markdown only.",
+            "These full-color page images contain both student work and teacher annotations. "
+            "Transcribe only student handwriting, equations, and diagrams. Identify student work by its context "
+            "and ignore teacher marks, scores, checks, comments, and feedback. Preserve mistakes and incomplete work. "
+            "Do not solve, correct, or guess unclear content. These are pages 2 onward of the original PDF; "
+            "label headings with original page numbers. Return Markdown only.",
             student_images,
             student_dir,
             model=os.environ.get("PIPELINE_CODEX_MODEL"), effort=effort, timeout=timeout,
