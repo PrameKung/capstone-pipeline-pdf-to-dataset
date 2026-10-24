@@ -2,7 +2,7 @@
 
 ## Current state
 
-The repository has a local parallel PDF preprocessing stage. It recursively finds PDFs under `raw/`, claims each path so multiple workers do not process it at once, removes page 1 into a working PDF, renders pages 2 onward, saves likely-red masks, and creates student views from the red channel in grayscale. This reduces red-mark contrast without whitening adjacent writing. For `raw/signal/318/1.pdf`, inspect `.pipeline/jobs/signal/318/1/`. A versioned `.rendered` marker under `.pipeline/claims/` skips current results; bumping the preprocessing version regenerates them. Python worker count and Docker worker replicas can be configured.
+The repository has a local parallel PDF preprocessing stage. It recursively finds PDFs under `raw/`, claims each path so multiple workers do not process it at once, removes page 1 into a working PDF, renders pages 2 onward, and creates grayscale student views from the red channel. Red-ink detection and masking are not performed. For `raw/signal/318/1.pdf`, inspect `.pipeline/jobs/signal/318/1/`. A versioned `.rendered` marker under `.pipeline/claims/` skips current results; bumping the preprocessing version regenerates them. Python worker count and Docker worker replicas can be configured.
 
 This is an initial processing stage only. It does not extract answers or create CSV output.
 
@@ -19,7 +19,7 @@ This is an initial processing stage only. It does not extract answers or create 
 
 - [ ] Validate PDFs and compute source checksums; persist stable attempt, response, and run IDs.
 - [x] Exclude page 1 before making any derived artifact; render later pages with original page numbers retained.
-- [x] Generate red-ink masks and student views without altering source PDFs; save possible overlaps for inspection.
+- [x] Generate red-channel grayscale student views without altering source PDFs.
 - [ ] Map questions and preserve unmapped answers with a blank question ID and `needs_review` status.
 - [ ] Extract student work and teacher grading in isolated Codex CLI passes using the local subscription login.
 - [ ] Validate records, retain provenance, and surface only ambiguous or failed rows for review.
@@ -29,6 +29,6 @@ This is an initial processing stage only. It does not extract answers or create 
 
 ## Next implementation milestone
 
-Add PDF checksums and durable per-run records around preprocessing, then compare paired pages to better distinguish reverse-side bleed-through from teacher marks.
+Add PDF checksums and durable per-run records around preprocessing.
 
 See [pipeline overview](pipeline-overview.md), [pipeline behavior](pipeline-behavior.md), and [CSV output format](csv-output-format.md) for the target design and schema.

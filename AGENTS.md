@@ -22,7 +22,7 @@ Recreate the PDF-to-dataset pipeline from `~/Documents/capstone/capstone-storage
 ## Pipeline requirements
 
 - Process graded scanned PDFs into question-level student answers and separate teacher grading records.
-- Render pages, detect likely red ink, preserve original evidence, and flag overlap or uncertainty. Never reconstruct hidden handwriting or guess unclear content.
+- Render pages and create grayscale student views from the red channel. Preserve untouched color evidence; do not detect or mask red ink. Never reconstruct hidden handwriting or guess unclear content.
 - Transcribe student work faithfully, including incorrect or incomplete math. Do not solve, correct, or include teacher scores, feedback, or marks in student-answer inputs.
 - Transcribe grading marks without regrading. Preserve raw score notation; use a null score and request review when meaning or question association is unclear.
 - Keep provenance from each record to its source file, pages, run, and extraction configuration. Successfully parsed output is not human-verified ground truth.

@@ -51,7 +51,7 @@ Treat each PDF as one attempt and keep its anonymous IDs stable across reruns. A
 local input PDFs
   -> validate and identify source
   -> render PDF pages
-  -> detect likely red ink and create a student view
+  -> create a red-channel grayscale student view (no red-ink detection)
   -> map question regions
   -> extract student answers and teacher grading separately
   -> validate, preserve evidence, and flag uncertainty
@@ -59,7 +59,7 @@ local input PDFs
   -> export datasets
 ```
 
-Student extraction sees only the student view and permitted question metadata. Grading extraction sees the original graded crop and red-ink evidence. Keep those passes isolated so teacher scores and comments cannot enter student-answer text or grader inputs.
+Student extraction sees only the student view and permitted question metadata. Grading extraction sees the original graded crop. Keep those passes isolated so teacher scores and comments cannot enter student-answer text or grader inputs.
 
 ## Data quality rules
 
