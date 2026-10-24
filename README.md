@@ -18,6 +18,19 @@ docker compose up --build -d --scale worker=3
 
 Stop containers with `docker compose down`.
 
+### Container resource limits
+
+Docker Compose limits each backend container to **0.5 CPU / 512 MB RAM** and each
+worker replica to **1 CPU / 2 GB RAM** by default. Override these in `.env` with
+`PIPELINE_BACKEND_CPUS`, `PIPELINE_BACKEND_MEMORY`, `PIPELINE_WORKER_CPUS`, and
+`PIPELINE_WORKER_MEMORY`. These are ceilings, not reserved resources or benchmarked
+minimum requirements. Five worker replicas can use up to 10 GB RAM in total.
+Large PDFs may need a higher memory limit; exceeding it can cause Docker to kill
+the worker. Rootless Docker needs host cgroup support/delegation to enforce limits.
+
+Apply changed limits by recreating containers with `docker compose up -d` after
+active jobs finish. A simple container restart does not apply configuration changes.
+
 ### Environment settings
 
 `.env.example` groups the Docker settings into three sections:
