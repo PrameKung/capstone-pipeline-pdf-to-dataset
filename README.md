@@ -269,7 +269,10 @@ edge cases, concurrent-process checks, recovery checks, and unverified areas.
 ## Reuse one question template across an exam batch
 
 A shared template avoids copying question/solution/rubric metadata into every
-student's per-PDF metadata file. Store it locally under `.pipeline/templates/`
+student's per-PDF metadata file. Store it under `templates/`, outside replaceable
+worker state. Templates and reference material are ignored by default; the
+explicitly approved `com-eng-math-ii-midterm-2026-1/questions.json` is versioned.
+Save templates
 as JSON with a single `questions` mapping in the same format used by per-PDF
 metadata. Keys must match OCR question labels exactly; explicit punctuation
 aliases can share the same stable question ID. Include parent and subpart entries
@@ -279,12 +282,14 @@ From `backend/`, select a template for a batch belonging to that exam:
 
 ```sh
 uv run --locked python -m app.pipeline.jobs.worker --once --export-only \
-  --question-template ../.pipeline/templates/<exam>/questions.json
+  --question-template ../templates/<exam>/questions.json
 ```
 
 Alternatively set `PIPELINE_QUESTION_TEMPLATE` to a local file path. For Docker,
-set it in `.env` to `/data/.pipeline/templates/<exam>/questions.json` and recreate
-the workers. It is blank by default so unrelated exams are not assigned a template.
+set it in `.env` to `/data/templates/<exam>/questions.json` and recreate
+the workers. Docker mounts `templates/` read-only; override its host location with
+`PIPELINE_TEMPLATES_HOST_DIR`. The template selection is blank by default so
+unrelated exams are not assigned a template.
 Use separate runs/configurations for different exams.
 
 Per-PDF `questions` metadata overrides individual template fields for the same
