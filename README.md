@@ -165,4 +165,35 @@ when the actual historical model/effort settings are known, and
 produce run-level review notes; a supplied checksum mismatch rejects the build.
 Use completed, idle jobs: this standalone builder does not coordinate with active
 OCR workers or prove historical source linkage. It does not validate PDF structure.
-Full record validation, CSV writing, and worker integration are subsequent stages.
+CSV writing and worker integration are subsequent stages.
+
+### Record validation and exception review
+
+`build_job_records` validates rows before saving the internal JSON run. It keeps
+every supplied cell unchanged and stores issues in
+`record["internal"]["validation"]["issues"]`, with field, message, and severity.
+Existing OCR review notes remain separate and are preserved.
+
+- `failed`: invalid column structure, non-string text/IDs, missing or duplicate
+  response IDs, mismatched attempt IDs, invalid original pages, malformed JSON
+  arrays, or nonnumeric/non-finite score cells.
+- `needs_review`: unmapped questions, existing OCR ambiguities, negative or
+  out-of-bounds scores, conflicting question metadata, or rubric discrepancies.
+  Checks cover criterion IDs, required fields, awards and maxima, score totals,
+  criterion status, and covered/missed lists. Fractional totals use decimal
+  arithmetic. Missing optional fields remain blank; unavailable rubric metadata
+  prevents corresponding checks rather than causing invented values.
+- `extracted`: no row-level issues detected. This does not mean human verification.
+
+`result["validation"]` reports status counts, `has_failures`, and only exceptional
+`review_response_ids`. It also reports unmatched grading count and run-level
+provenance notes, which still need attention even if no row has an issue. Full
+unmatched grading records remain in `result["unmatched_grading"]`. Failed records
+are retained internally for inspection; they are not a successful export.
+
+To recheck an existing in-memory run, call
+`validate_records(result["records"], attempt_id=result["attempt_id"])` from
+`app.pipeline.dataset.validation`. This updates internal validation/status and
+returns row-level counts; it does not save files or modify CSV cells. Validation
+checks supplied data consistency, not transcription accuracy, teacher/student
+separation, or whether supplied review approvals are authentic.

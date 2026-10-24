@@ -15,21 +15,8 @@ from typing import Any, Mapping
 
 from app.pipeline.dataset.markdown import match_markdown
 
-CSV_COLUMNS = tuple(
-    "source,subject,topic,concept_tags,question_type,question_id,rubric_version,"
-    "question_text,answer,solution,rubric_max_score,rubric_criteria,rubric_scoring_guide,"
-    "question_review_status,reviewer_feedback,reviewed_answer,reviewed_solution,"
-    "student_id,response_id,response_origin,attempt_id,sample_type,answer_text,"
-    "expected_score,rubric_analysis,covered_rubric_points,missed_rubric_points,"
-    "error_categories,error_location,missed_concepts,grader_feedback,"
-    "improvement_suggestion,difficulty,difficulty_reason,answer_image_path,"
-    "image_review_status".split(",")
-)
-QUESTION_FIELDS = frozenset(CSV_COLUMNS[:17]) | {"difficulty", "difficulty_reason"}
-RESPONSE_FIELDS = frozenset(CSV_COLUMNS) - QUESTION_FIELDS - {
-    "response_id", "attempt_id", "answer_text",
-}
-JSON_FIELDS = {"rubric_criteria", "rubric_analysis", "error_categories", "missed_concepts"}
+from app.pipeline.dataset.schema import CSV_COLUMNS, JSON_FIELDS, QUESTION_FIELDS, RESPONSE_FIELDS
+from app.pipeline.dataset.validation import validate_records
 
 
 def _sha256(path: Path) -> str:
@@ -161,6 +148,9 @@ def build_job_records(
         "records": records,
         "unmatched_grading": [asdict(grading) for grading in matched.unmatched_grading],
     }
+    result["validation"] = validate_records(records, attempt_id=attempt_id)
+    result["validation"]["unmatched_grading_count"] = len(matched.unmatched_grading)
+    result["validation"]["run_review_notes"] = list(result["review_notes"])
     # Store outside jobs/: PDF preparation may replace an entire job folder.
     destination = state_dir / "dataset" / source_key / attempt_id / f"{run_id}.json"
     result["record_path"] = destination.relative_to(state_dir).as_posix()
