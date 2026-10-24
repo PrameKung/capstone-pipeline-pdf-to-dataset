@@ -1,6 +1,6 @@
 # Local PDF Pipeline
 
-Local worker scaffold for processing PDFs stored under `raw/`. The worker recursively finds PDF files and prints each filename once. Extraction and CSV generation are not implemented yet.
+Local pipeline for processing PDFs stored under `raw/`. The worker recursively finds PDFs, removes the first page into a local working copy, and renders the remaining pages to images under `.pipeline/`. Answer extraction and CSV generation are not implemented yet.
 
 ## Run with Docker
 
@@ -34,7 +34,7 @@ make backend-sync
 make pipeline-once
 ```
 
-Set `PIPELINE_WORKERS` to change the number of concurrent PDFs per worker process. Docker replicas share `.pipeline/` and atomically claim PDFs so the same unchanged source is printed once. A changed PDF is treated as a new job.
+Set `PIPELINE_WORKERS` to change the number of concurrent PDFs per worker process. Docker replicas share `.pipeline/` and atomically claim each PDF path. A path is skipped after successful rendering; replacing its PDF does not currently trigger a rerun.
 
 ## Local data
 

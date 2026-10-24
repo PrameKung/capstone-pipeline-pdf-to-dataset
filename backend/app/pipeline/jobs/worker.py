@@ -1,13 +1,14 @@
-"""Print each discovered PDF filename using a small parallel worker pool."""
+"""Preprocess discovered PDFs using a small parallel worker pool."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
 import os
-import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
+
+from app.pipeline.pdf.preprocess import cut_first_page_and_render
 
 
 def find_pdfs(raw_dir: Path) -> list[Path]:
@@ -21,12 +22,12 @@ def _claim_key(raw_dir: Path, pdf_path: Path) -> str:
     return hashlib.sha256(relative_path.encode("utf-8")).hexdigest()
 
 
-def print_pdf_name(raw_dir: Path, state_dir: Path, pdf_path: Path) -> bool:
-    """Print a filename once, coordinating concurrent local/Docker workers."""
+def process_pdf(raw_dir: Path, state_dir: Path, pdf_path: Path) -> bool:
+    """Cut the first page and render remaining pages, coordinating workers."""
     jobs_dir = state_dir / "jobs"
     jobs_dir.mkdir(parents=True, exist_ok=True)
     key = _claim_key(raw_dir, pdf_path)
-    done_file = jobs_dir / f"{key}.done"
+    done_file = jobs_dir / f"{key}.rendered"
     lock_file = jobs_dir / f"{key}.lock"
 
     try:
@@ -38,8 +39,10 @@ def print_pdf_name(raw_dir: Path, state_dir: Path, pdf_path: Path) -> bool:
         os.close(lock_fd)
         if done_file.exists():
             return False
-        time.sleep(1)
-        print(pdf_path.name, flush=True)
+        relative_path = pdf_path.relative_to(raw_dir)
+        artifact_dir = state_dir / "artifacts" / key
+        images = cut_first_page_and_render(pdf_path, artifact_dir)
+        print(f"Rendered {len(images)} pages from {relative_path.as_posix()}", flush=True)
         done_file.touch()
         return True
     finally:
@@ -65,12 +68,12 @@ def run_worker(raw_dir: Path, state_dir: Path, workers: int, poll_seconds: float
             candidates = [
                 path
                 for path in find_pdfs(raw_dir)
-                if not (jobs_dir / f"{_claim_key(raw_dir, path)}.done").exists()
+                if not (jobs_dir / f"{_claim_key(raw_dir, path)}.rendered").exists()
                 and not (jobs_dir / f"{_claim_key(raw_dir, path)}.lock").exists()
             ]
             available = workers - len(running)
             for path in candidates[:available]:
-                running.add(pool.submit(print_pdf_name, raw_dir, state_dir, path))
+                running.add(pool.submit(process_pdf, raw_dir, state_dir, path))
 
             if once:
                 if not running:
@@ -80,12 +83,12 @@ def run_worker(raw_dir: Path, state_dir: Path, workers: int, poll_seconds: float
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Find PDFs and print their filenames")
+    parser = argparse.ArgumentParser(description="Remove the first page and render remaining PDF pages")
     parser.add_argument("--raw-dir", type=Path, default=Path(os.environ.get("RAW_DIR", "../raw")))
     parser.add_argument("--state-dir", type=Path, default=Path(os.environ.get("PIPELINE_DATA_DIR", "../.pipeline")))
     parser.add_argument("--workers", type=int, default=int(os.environ.get("PIPELINE_WORKERS", "2")))
     parser.add_argument("--poll-seconds", type=float, default=float(os.environ.get("PIPELINE_POLL_SECONDS", "5")))
-    parser.add_argument("--once", action="store_true", help="Print current filenames, then exit")
+    parser.add_argument("--once", action="store_true", help="Process current PDFs, then exit")
     args = parser.parse_args()
     run_worker(args.raw_dir, args.state_dir, args.workers, args.poll_seconds, args.once)
 
