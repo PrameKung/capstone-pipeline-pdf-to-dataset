@@ -38,6 +38,7 @@ def print_pdf_name(raw_dir: Path, state_dir: Path, pdf_path: Path) -> bool:
         os.close(lock_fd)
         if done_file.exists():
             return False
+        time.sleep(1)
         print(pdf_path.name, flush=True)
         done_file.touch()
         return True
