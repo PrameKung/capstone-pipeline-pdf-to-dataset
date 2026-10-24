@@ -31,6 +31,10 @@ The first PDF page contains student credentials and must be excluded from pipeli
 
 The `raw/` and `output/` roots should be configurable. Keep source PDFs, generated artifacts, job state, and credentials out of version control.
 
+## Docker
+
+Copy `.env.example` to `.env` if you need to change host paths or container UID/GID. Start the backend API with `docker compose up --build`; it binds to `127.0.0.1:8000`, mounts `raw/` read-only, and mounts `output/` and `.pipeline/` writable. Stop it with `docker compose down`. The current image provides the API health endpoint; add and scale a worker service after the worker entrypoint is implemented.
+
 Use Git and GitHub to version source code, configuration templates, and documentation. Ensure `raw/`, `output/`, local worker state, credentials, and private exam data are ignored by Git.
 
 ## Parallel processing

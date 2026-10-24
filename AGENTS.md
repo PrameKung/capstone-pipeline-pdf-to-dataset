@@ -33,6 +33,7 @@ Recreate the PDF-to-dataset pipeline from `~/Documents/capstone/capstone-storage
 
 - Use a local Python backend and the existing frontend conventions where applicable. Do not require R2, cloud hosting, a database, a distributed queue, or a paid model API.
 - Keep the uv project and Python version pin in `backend/`; run backend Python and uv commands from that directory.
+- Keep Docker configuration local-only: bind published ports to loopback, mount `raw/` read-only, and keep `output/` and `.pipeline/` on local mounts.
 - Run AI extraction through the locally authenticated Codex CLI (`codex exec`) using the user's ChatGPT subscription login. Never use API-key billing or silently change providers.
 - Keep model and reasoning-effort defaults centralized and configurable. Check installed CLI support, authentication mode, and model availability before processing; fail with a clear message when unavailable.
 - Run student and grading extraction as isolated passes. Do not pass teacher marks, grading fields, or original graded images into student extraction.
