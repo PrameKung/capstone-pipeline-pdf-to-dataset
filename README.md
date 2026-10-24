@@ -1,6 +1,6 @@
 # Local PDF Pipeline
 
-This testing branch recursively finds PDFs under `raw/`, removes page 1 from each working copy, and runs Codex OCR. Each job folder under `.pipeline/jobs/` contains `pages-without-first.pdf`, the separate `student-response.md` and `grading-response.md`, and combined `ocr.md`. CSV generation is not implemented on this branch.
+This testing branch recursively finds PDFs under `raw/`, removes page 1 from each working copy, and runs Codex OCR. Each job folder under `.pipeline/jobs/` contains `pages-without-first.pdf`, the separate `student-response.md` and `grading-response.md`, and combined `ocr.md`. The worker validates dataset records and exports one CSV per PDF under the matching `output/` subfolder.
 
 ## Run with Docker
 
@@ -50,12 +50,12 @@ make backend-sync
 make pipeline-once
 ```
 
-The worker image includes Codex CLI and uses the host's `codex login` file through a read-only mount. It makes a temporary runtime copy inside the container so CLI state does not write back to host credentials. Set `PIPELINE_WORKERS` to change concurrent PDF jobs. Docker replicas share `.pipeline/` and atomically claim each PDF path. A path is skipped after successful OCR; replacing its PDF does not currently trigger a rerun.
+The worker image includes Codex CLI and uses the host's `codex login` file through a read-only mount. It makes a temporary runtime copy inside the container so CLI state does not write back to host credentials. Set `PIPELINE_WORKERS` to change concurrent PDF jobs. Docker replicas share `.pipeline/` and atomically claim each PDF path. Source checksums and extraction settings control OCR reuse; changed PDFs trigger new extraction. CSV exports also track Markdown and optional metadata changes.
 
 ## Local data
 
 - Inputs: `raw/` (read-only in Docker)
-- Final CSVs: `output/` (not produced by this initial worker)
+- Final CSVs: `output/` (one CSV per source PDF)
 - Job markers and intermediate state: `.pipeline/`
 
 These data directories and local credentials are excluded from Git. Never commit private exam PDFs or generated student data.
@@ -81,8 +81,9 @@ Unclear content is marked `[unclear]` rather than guessed. These instructions im
 format consistency but do not guarantee identical output or valid LaTeX on every run.
 
 Prompt changes apply to new extractions after restarting the local worker or rebuilding
-the Docker worker image. Existing Markdown and completed-job markers are not migrated;
-successfully cached jobs remain skipped.
+the Docker worker image. Bump `OCR_VERSION` when changing extraction prompts to invalidate OCR caches.
+Legacy jobs can be exported with `--export-only`; normal processing regenerates
+OCR when no current extraction manifest exists.
 
 ## Parse and match existing OCR Markdown
 
@@ -114,7 +115,7 @@ labels refer to the same question within a PDF; it cannot resolve reused questio
 numbers in different exam sections. It cannot detect teacher content that OCR
 mistakenly included in student text.
 
-This is an in-memory parsing stage, not CSV export or worker integration.
+The worker uses this parsing stage when building records for CSV export.
 
 ## Build dataset records
 
@@ -165,7 +166,7 @@ when the actual historical model/effort settings are known, and
 produce run-level review notes; a supplied checksum mismatch rejects the build.
 Use completed, idle jobs: this standalone builder does not coordinate with active
 OCR workers or prove historical source linkage. It does not validate PDF structure.
-CSV writing and worker integration are subsequent stages.
+The worker coordinates this builder with OCR and CSV export using a shared job lock.
 
 ### Record validation and exception review
 
@@ -197,3 +198,63 @@ To recheck an existing in-memory run, call
 returns row-level counts; it does not save files or modify CSV cells. Validation
 checks supplied data consistency, not transcription accuracy, teacher/student
 separation, or whether supplied review approvals are authentic.
+
+## Export CSVs
+
+Export existing Markdown without rerunning OCR:
+
+```sh
+make pipeline-export
+# Or, from backend/:
+uv run --locked python -m app.pipeline.jobs.worker --once --export-only \
+  --raw-dir ../raw --state-dir ../.pipeline --output-dir ../output
+```
+
+Normal `make pipeline-once` and Docker workers now perform preparation, OCR,
+record building, validation, and export. Configure the output root using
+`--output-dir` or `OUTPUT_DIR`; Docker workers mount the configured local output
+folder. Input, output, and state roots must be separate, non-nested folders.
+Stop all old workers before upgrading: the new shared Linux file locks release
+on process exit and their files must not be deleted while workers are active.
+Legacy `.lock` files cause a clear error; remove a stale legacy lock only after
+confirming its old worker has stopped.
+
+Optional `--metadata-dir` / `PIPELINE_METADATA_DIR` points to local JSON files
+mirroring the PDF paths: `raw/signal/318/1.pdf` uses
+`<metadata-dir>/signal/318/1.json`. Each file accepts `questions` (exact OCR label
+to question fields) and `responses` (stable response ID to response fields).
+Missing files mean no supplied metadata. Store private metadata under `.pipeline/`
+to keep it out of Git. For Docker, use a path inside the mounted state folder.
+
+The output has the exact 36-column header, UTF-8 encoding, and standard CSV
+quoting for multiline Markdown, LaTeX, commas, and quotes. Failed validation
+blocks publication; `needs_review` rows remain included with their review state
+in the internal JSON run. Unknown question IDs stay blank. Empty response sets
+produce a header-only CSV. No scores or reference material are generated.
+
+Exports are written to a temporary `.csv` on the output filesystem, read back
+for validation, then atomically replace the destination. Prior CSVs survive
+extraction, parsing, validation, or pre-publication write failures. Temporary CSVs
+are cleaned up on ordinary failures; a hard process kill may leave a hidden
+staging `.csv`, which can be removed after workers stop. Export markers under
+`.pipeline/claims/` track checksums, destination, and the internal record path.
+A missing or modified output CSV is rebuilt. Source, Markdown, or metadata edits
+invalidate the export cache. New OCR manifests record source checksum and actual
+configured model/effort; source or configuration changes invalidate OCR as well.
+
+Legacy Markdown lacks a source manifest. Its first `--export-only` run retains
+that provenance warning rather than claiming a verified source association.
+Subsequent source changes are rejected in export-only mode; use normal processing
+to regenerate OCR. New jobs with an incomplete extraction manifest cannot export
+partially refreshed Markdown. Finish editing inputs before starting a run.
+
+Failures are recorded in `.pipeline/claims/*.failure.json`; `--once` exits nonzero
+if a job fails. Polling workers retry a failed job when watched source/Markdown/
+metadata content changes or after restarting. Shared locks skip jobs already
+owned by another worker, so a one-shot invocation does not wait for those jobs.
+All replicas must share the same raw/state/output configuration. Hash checks run
+on each scan and can cost noticeable I/O on large input collections.
+
+The worker integration was checked with synthetic extraction stubs, not live
+Codex calls. Existing OCR still sends graded page images to the student pass;
+this export work does not fix that previously identified isolation limitation.

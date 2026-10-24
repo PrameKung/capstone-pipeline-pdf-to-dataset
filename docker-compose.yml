@@ -39,6 +39,7 @@ services:
     environment:
       RAW_DIR: /data/raw
       PIPELINE_DATA_DIR: /data/.pipeline
+      OUTPUT_DIR: /data/output
       PIPELINE_WORKERS: ${PIPELINE_WORKERS:-2}
       PIPELINE_POLL_SECONDS: ${PIPELINE_POLL_SECONDS:-5}
       PIPELINE_CODEX_MODEL: ${PIPELINE_CODEX_MODEL:-gpt-6.1-sol}
@@ -49,6 +50,7 @@ services:
     volumes:
       - ${PIPELINE_RAW_HOST_DIR:-./raw}:/data/raw:ro
       - ${PIPELINE_STATE_HOST_DIR:-./.pipeline}:/data/.pipeline
+      - ${PIPELINE_OUTPUT_HOST_DIR:-./output}:/data/output
       - ${CODEX_AUTH_FILE_HOST:-${HOME}/.codex/auth.json}:/run/codex-auth/auth.json:ro
     user: "${PIPELINE_UID:-0}:${PIPELINE_GID:-0}"
     restart: unless-stopped
