@@ -24,3 +24,24 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  worker:
+    build:
+      context: ./backend
+    command:
+      - uv
+      - run
+      - --no-sync
+      - python
+      - -m
+      - app.pipeline.jobs.worker
+    environment:
+      RAW_DIR: /data/raw
+      PIPELINE_DATA_DIR: /data/.pipeline
+      PIPELINE_WORKERS: ${PIPELINE_WORKERS:-2}
+      PIPELINE_POLL_SECONDS: ${PIPELINE_POLL_SECONDS:-5}
+    volumes:
+      - ${PIPELINE_RAW_HOST_DIR:-./raw}:/data/raw:ro
+      - ${PIPELINE_STATE_HOST_DIR:-./.pipeline}:/data/.pipeline
+    user: "${PIPELINE_UID:-1000}:${PIPELINE_GID:-1000}"
+    restart: unless-stopped

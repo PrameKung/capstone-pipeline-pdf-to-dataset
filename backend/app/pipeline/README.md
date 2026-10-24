@@ -17,4 +17,6 @@ Suggested module responsibilities:
 - `dataset/`: response schemas, student/grading merge and validation, and atomic CSV writing that preserves the last successful export on failure.
 - `jobs/`: `.pipeline/` state, checkpoints, atomic worker claiming, cancellation, retries, and concurrency limits shared by local Docker worker replicas.
 
+The initial worker entrypoint is `python -m app.pipeline.jobs.worker`. It recursively discovers PDFs, validates that pages remain after excluding page 1, and prints a processing line. It uses a configurable thread pool within each container and atomic state markers under `.pipeline/jobs/` to coordinate multiple containers. This is scaffolding only; it does not yet extract answers or create CSVs.
+
 Keep source PDFs and generated CSVs out of this package. Inputs live under `raw/`, published CSVs under `output/`, and local state and intermediates under `.pipeline/`.

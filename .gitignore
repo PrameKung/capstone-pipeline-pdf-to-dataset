@@ -1,6 +1,8 @@
 # Local source PDFs and generated CSV exports
-/raw/
-/output/
+/raw/*
+/output/*
+!/raw/.gitkeep
+!/output/.gitkeep
 
 # Local worker state, checkpoints, logs, and intermediate evidence
 /.pipeline/
