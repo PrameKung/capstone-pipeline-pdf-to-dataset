@@ -17,6 +17,7 @@ from app.pipeline.dataset.markdown import match_markdown
 
 from app.pipeline.dataset.schema import CSV_COLUMNS, JSON_FIELDS, QUESTION_FIELDS, RESPONSE_FIELDS
 from app.pipeline.dataset.validation import validate_records
+from app.pipeline.dataset.scoring import teacher_score, number
 
 
 def _sha256(path: Path) -> str:
@@ -50,11 +51,12 @@ def build_job_records(
     extraction_config: Mapping[str, Any] | None = None,
     extraction_source_sha256: str | None = None,
 ) -> dict[str, Any]:
-    """Build and save a run from existing Markdown using supplied metadata only.
+    """Build and save a run using supplied metadata and checked teacher decisions.
 
     ``questions`` maps exact OCR labels to question-level CSV fields, including
     an explicit question_id. ``response_metadata`` maps generated response IDs
-    to response-level CSV fields. Scores and rubric evaluations are never inferred.
+    to response-level CSV fields. Teacher-derived scores fill otherwise blank
+    expected_score cells; student work is never independently regraded.
     Configuration and extraction checksum must describe the actual OCR run;
     current environment defaults are deliberately not used as historical facts.
     """
@@ -113,6 +115,15 @@ def build_job_records(
             notes.append("No supplied question ID mapping; response remains unmapped")
         row.update(supplied_responses.get(response_id, {}))
         row.update(response_id=response_id, attempt_id=attempt_id, answer_text=response.answer_text)
+        extracted_score, score_notes = teacher_score(response, row)
+        notes.extend(score_notes)
+        expected_source = "supplied_metadata" if row["expected_score"] != "" else None
+        if extracted_score is not None:
+            if row["expected_score"] == "":
+                row["expected_score"] = extracted_score
+                expected_source = "teacher_score_decision"
+            elif number(row["expected_score"]) != number(extracted_score):
+                notes.append("Supplied expected_score conflicts with the teacher-derived score; supplied value retained")
         records.append({
             "row": row,
             "internal": {
@@ -120,7 +131,8 @@ def build_job_records(
                 "source_pages": response.source_pages,
                 "student_sections": [asdict(section) for section in response.sections],
                 "teacher_grading": [asdict(grading) for grading in response.grading],
-                "extracted_score": None,
+                "extracted_score": extracted_score,
+                "expected_score_source": expected_source,
                 "verified_score": None,
                 "status": "needs_review" if notes else "extracted",
                 "review_notes": list(dict.fromkeys(notes)),

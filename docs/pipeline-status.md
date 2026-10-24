@@ -9,6 +9,8 @@
 - Exact 36-column record building with supplied metadata, stable IDs for unchanged
   response structure, checksums, and internal provenance.
 - Record validation with failed/review statuses and preserved supplied values.
+- Rubric-aware teacher score decisions mapped to expected_score after checks, with
+  raw evidence and extracted/verified score distinctions retained internally.
 - Atomic CSV publication, mirrored output paths, round-trip validation, and
   preservation of the previous export on pre-publication failures.
 - Existing-Markdown export without OCR, content-aware caches, source/configuration

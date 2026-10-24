@@ -11,8 +11,9 @@ from pathlib import Path
 
 from app.pipeline.dataset.records import _sha256, build_job_records
 from app.pipeline.dataset.schema import CSV_COLUMNS
+from app.pipeline.dataset.metadata import load_metadata
 
-EXPORT_VERSION = 1
+EXPORT_VERSION = 2
 
 
 def atomic_json(path: Path, value: dict) -> None:
@@ -51,24 +52,7 @@ def export_job(source: Path, raw_dir: Path, state_dir: Path, output_dir: Path,
     paths = {name: (job / name).resolve() for name in ("student-response.md", "grading-response.md")}
     if any(not path.is_relative_to(state_dir) for path in paths.values()):
         raise ValueError("OCR files must stay inside state_dir")
-    metadata_bytes = metadata_path.read_bytes() if metadata_path else b"{}"
-    metadata = json.loads(metadata_bytes)
-    if not isinstance(metadata, dict) or set(metadata) - {"questions", "responses"}:
-        raise ValueError("Metadata must be an object with only questions and responses mappings")
-    if any(not isinstance(value, dict) for value in metadata.values()):
-        raise ValueError("Metadata questions and responses must be mappings")
-    template_bytes = question_template.read_bytes() if question_template else b"{}"
-    template = json.loads(template_bytes)
-    if (not isinstance(template, dict) or set(template) - {"questions"}
-            or not isinstance(template.get("questions", {}), dict)):
-        raise ValueError("Question template must contain only a questions mapping")
-    questions = dict(template.get("questions", {}))
-    if any(not isinstance(value, dict) for value in questions.values()):
-        raise ValueError("Each template question must be a field mapping")
-    for label, fields in metadata.get("questions", {}).items():
-        if not isinstance(fields, dict):
-            raise ValueError("Each metadata question must be a field mapping")
-        questions[label] = {**questions.get(label, {}), **fields}
+    metadata_bytes, template_bytes, questions, responses = load_metadata(metadata_path, question_template)
     fingerprint = {
         "version": EXPORT_VERSION, "source_sha256": _sha256(source),
         "markdown": {name: _sha256(path) for name, path in paths.items()},
@@ -83,7 +67,7 @@ def export_job(source: Path, raw_dir: Path, state_dir: Path, output_dir: Path,
         return False
     result = build_job_records(
         source, raw_dir=raw_dir, state_dir=state_dir,
-        questions=questions, response_metadata=metadata.get("responses"),
+        questions=questions, response_metadata=responses,
         extraction_config=extraction.get("config"),
         extraction_source_sha256=extraction.get("source_sha256"),
     )

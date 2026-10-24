@@ -12,8 +12,11 @@ from pathlib import Path
 
 from app.pipeline.dataset.export import atomic_json, export_job, read_json
 from app.pipeline.dataset.records import _sha256
+from app.pipeline.dataset.metadata import load_metadata
+from app.pipeline.dataset.scoring import rubric_context
+import json
 
-OCR_VERSION = 1
+OCR_VERSION = 3
 
 
 def find_pdfs(raw_dir: Path) -> list[Path]:
@@ -53,6 +56,14 @@ def process_pdf(raw_dir: Path, state_dir: Path, pdf_path: Path, *,
             manifest_path = claims / f"{key}.extraction.json"
             manifest = read_json(manifest_path)
             source_sha = _sha256(pdf_path)
+            metadata_path = metadata_dir / relative.with_suffix(".json") if metadata_dir else None
+            if metadata_path is not None and not metadata_path.is_file():
+                metadata_path = None
+            _, _, questions, _ = load_metadata(metadata_path, question_template)
+            rubric_inputs = {label: rubric_context(q) for label, q in questions.items()}
+            rubric_sha = hashlib.sha256(json.dumps(
+                rubric_inputs, sort_keys=True, ensure_ascii=False, allow_nan=False
+            ).encode()).hexdigest()
             if export_only:
                 if manifest and (manifest.get("source_sha256") != source_sha or not manifest.get("complete")):
                     raise ValueError("OCR is incomplete or belongs to another source version; run the normal worker")
@@ -66,21 +77,18 @@ def process_pdf(raw_dir: Path, state_dir: Path, pdf_path: Path, *,
                           "grading_effort": os.environ.get("PIPELINE_CODEX_EFFORT", DEFAULT_EFFORT),
                           "render_dpi": int(os.environ.get("PIPELINE_CODEX_RENDER_DPI", "200"))}
                 inputs = {"source_sha256": source_sha, "preprocess_version": PREPROCESS_VERSION,
-                          "ocr_version": OCR_VERSION, "config": config}
+                          "ocr_version": OCR_VERSION, "config": config, "rubric_sha256": rubric_sha}
                 same_inputs = all(manifest.get(k) == v for k, v in inputs.items())
                 complete_files = all((job / name).is_file() for name in
                                      ("pages-without-first.pdf", "student-response.md", "grading-response.md", "ocr.md"))
                 if not same_inputs or not manifest.get("complete") or not complete_files:
                     atomic_json(manifest_path, {**inputs, "complete": False})
                     prepared = prepare_pdf_without_first_page(pdf_path, job)
-                    extract_pdf(prepared, job / "ocr.md", state_dir)
+                    extract_pdf(prepared, job / "ocr.md", state_dir, questions=questions)
                     if _sha256(pdf_path) != source_sha:
                         raise ValueError("Source changed during extraction; retry")
                     manifest = {**inputs, "complete": True}
                     atomic_json(manifest_path, manifest)
-            metadata_path = metadata_dir / relative.with_suffix(".json") if metadata_dir else None
-            if metadata_path is not None and not metadata_path.is_file():
-                metadata_path = None
             changed = export_job(pdf_path, raw_dir, state_dir, output_dir,
                                  extraction=manifest, metadata_path=metadata_path,
                                  question_template=question_template)

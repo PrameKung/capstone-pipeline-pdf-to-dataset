@@ -36,7 +36,9 @@ configuration. See the README for setup, resource limits, and upgrade notes.
 Markdown parsing preserves student work, including mistakes, and keeps teacher
 grading separately. Supplied metadata maps visible question labels to dataset
 IDs and supplies references, rubrics, and target scores. Conversion does not solve
-questions, create missing rubrics, or interpret raw teacher notation into scores.
+questions or create missing rubrics. The teacher pass may calculate scores from
+visible teacher annotations and the supplied rubric; uncertain interpretations
+remain blank and require review.
 
 Validation flags exceptions without requiring manual approval for every row.
 Unmapped responses keep blank question IDs and internal `needs_review` status.

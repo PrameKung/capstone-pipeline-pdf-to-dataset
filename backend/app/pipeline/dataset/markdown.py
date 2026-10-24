@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import re
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
 PAGE = re.compile(r"^## Page ([0-9]+)\s*$")
 QUESTION = re.compile(r"^### Question (.+?)\s*$")
-GRADING_FIELD = re.compile(r"^(Raw score|Marks|Feedback):[ \t]*(.*)$")
+GRADING_FIELD = re.compile(r"^(Raw score|Marks|Feedback|Score decision):[ \t]*(.*)$")
 
 
 class MarkdownFormatError(ValueError):
@@ -31,6 +32,7 @@ class GradingRecord:
     marks: str | None
     feedback: str | None
     review_notes: list[str] = field(default_factory=list)
+    score_decision: dict | None = None
 
 
 @dataclass
@@ -142,7 +144,16 @@ def _grading(section: Section) -> GradingRecord:
         result = "\n".join(values[name]).strip("\n")
         return None if result.strip() in {"", "[not visible]"} else result
 
-    return GradingRecord(section, value("Raw score"), value("Marks"), value("Feedback"), notes)
+    decision = None
+    if "Score decision" in values:
+        try:
+            decision = json.loads(value("Score decision") or "null")
+            if not isinstance(decision, dict):
+                raise ValueError("Score decision must be an object")
+        except (TypeError, ValueError):
+            decision = None
+            notes.append("Malformed teacher score decision")
+    return GradingRecord(section, value("Raw score"), value("Marks"), value("Feedback"), notes, decision)
 
 
 def match_markdown(student: str, grading: str) -> MatchedMarkdown:

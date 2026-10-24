@@ -43,12 +43,13 @@ loading PDF or Codex dependencies. It requires original-page headings beginning
 at page 2 or later. Exact visible question labels group answers across pages;
 unknown labels and repeated labels on a single page stay unresolved. Unmatched
 grading remains available internally. Student text, raw scores, marks, and feedback
-are kept separate, without calculating scores or repairing student mathematics.
+are kept separate. The teacher pass can calculate an evidence-backed award using
+the supplied rubric; it never repairs student mathematics or independently regrades.
 
 Optional metadata files mirror source paths below `--metadata-dir`, with
 `questions` keyed by exact OCR label and `responses` keyed by generated response
-ID. Only supplied metadata populates reference answers, rubrics, target scores,
-and review fields. Missing values stay blank; a known empty list is `[]`.
+ID. Supplied metadata populates reference answers, rubrics, and review fields.
+Validated teacher score decisions can populate otherwise blank target scores. Missing values stay blank; a known empty list is `[]`.
 
 Attempt IDs derive from source-relative path and PDF checksum. Response IDs use
 labels or page/occurrence identity. IDs remain stable for unchanged source and
@@ -68,9 +69,10 @@ or rubric discrepancies receive `needs_review`. Existing OCR notes are retained.
 Only those rows appear in the internal exceptional-response list. Run-level
 provenance warnings and unmatched grading are also retained for attention.
 
-`expected_score` is a supplied target; it does not imply verification. Extracted
-and human-verified scores remain separate null internal fields until a subsequent
-workflow explicitly supplies them. There is no human-review UI or verification
+`expected_score` is an explicit target or validated teacher-derived award; it does
+not imply verification. Accepted teacher decisions also populate internal
+`extracted_score`, while `verified_score` stays null. See the README for evidence,
+component-sum, and rubric-fingerprint checks. There is no human-review UI or verification
 workflow in this branch. Validation does not establish transcription accuracy.
 
 ## Publication and caching

@@ -43,7 +43,7 @@ source,subject,topic,concept_tags,question_type,question_id,rubric_version,quest
 | `attempt_id` | String ID | Attempt identifier. The reference uses `1` throughout; pipeline attempts require stable anonymous IDs per PDF. |
 | `sample_type` | Text | Observed response categories: `full`, `partial`, `wrong`. Preserve supplied labels rather than infer them during conversion. |
 | `answer_text` | Multiline text | Faithful student response, including errors and incomplete work. Exclude reference solutions, teacher marks, and grading feedback. |
-| `expected_score` | Number | Supplied target score for the response; fractional values are allowed. This field does not establish human verification; keep extracted and human-verified scores distinct in internal records. |
+| `expected_score` | Number | Explicitly supplied target score, or a validated teacher-derived award from raw scores/marks and the supplied rubric; fractional values are allowed. This field does not establish human verification; keep extracted and human-verified scores distinct in internal records. |
 | `rubric_analysis` | JSON array of objects | Per-criterion evaluation with `criterion_id`, `max_score`, `awarded_score`, `status`, and `reasoning`. Observed statuses: `covered`, `partial`, `missed`. |
 | `covered_rubric_points` | Semicolon-separated IDs | Fully covered criteria, such as `C1;C2`; blank when none. |
 | `missed_rubric_points` | Semicolon-separated IDs | Missed criteria; blank when none. Partial criteria remain distinguished in `rubric_analysis`. |
@@ -64,13 +64,15 @@ Meanings of entirely blank reference fields are inferred from their names; the r
 - Match Markdown fields to the exact column names above. Keep all 36 columns, even when values are unavailable.
 - Repeat question-level metadata for each response. Keep reference answers, student responses, rubric evaluations, and review fields separate.
 - Preserve Markdown and LaTeX as cell text, including line breaks and embedded tables. A table inside `question_text` remains in that single cell.
-- Transcribe supplied values only. Do not solve questions, correct student work, invent rubric evaluations, or infer missing scores and review approvals.
+- Transcribe supplied values only. Do not solve questions, correct student work, invent rubric evaluations, or invent missing scores and review approvals. The teacher pass may calculate an award from unambiguous teacher annotations and the supplied rubric, with raw evidence and reasoning retained internally.
 - Use empty cells for missing values. Use `[]` only when a JSON list is known to be empty, not when information is unavailable.
 - Serialize JSON fields as valid JSON, then use a CSV writer for CSV escaping. Do not construct CSV rows by joining strings with commas.
 - Use UTF-8 and standard CSV quoting: quote cells containing commas, quotes, or newlines, and double embedded quotation marks. Preserve IDs as strings.
 - Validate unique `response_id` values and consistent question/rubric metadata for a shared question and rubric version.
 - When scoring data is supplied, check that criterion IDs match the rubric, criterion awards are within their maxima, rubric points sum to `rubric_max_score`, and criterion awards sum to `expected_score`. Check that `expected_score` is between zero and `rubric_max_score`. Flag discrepancies rather than silently changing scores or regrading.
 - Keep the pipeline's original-page provenance and separate extracted/human-verified score records when preparing a dataset from PDF output. This reference template alone cannot represent that complete record.
+
+Teacher-derived awards fill `expected_score` only when it is otherwise blank. Explicit response metadata takes precedence and conflicts are flagged. Reject stale rubric fingerprints, ambiguous evidence, invalid bounds, and inconsistent component sums by leaving the derived score blank. Keep the extracted award separate from human verification. This is interpretation of teacher grading, not independent regrading.
 
 ## Pipeline metadata outside the CSV
 

@@ -76,7 +76,7 @@ on available Codex capacity. Restart/rebuild workers to load these changes.
 Open a response file in VS Code and use Markdown Preview (`Ctrl+Shift+V`). Extraction prompts
 request `$...$` inline math and separate `$$` display blocks using standard KaTeX/MathJax
 commands, with consistent page/question headings. Grading responses use `Raw score:`,
-`Marks:`, and `Feedback:` fields; raw scores remain literal source notation.
+`Marks:`, `Feedback:`, and a JSON `Score decision:` field; raw scores remain literal source notation.
 Unclear content is marked `[unclear]` rather than guessed. These instructions improve
 format consistency but do not guarantee identical output or valid LaTeX on every run.
 
@@ -105,7 +105,7 @@ page are grouped across pages; labels are not mapped to dataset question IDs yet
 Unknown labels and duplicate student labels on a page are kept separate for
 review. Unmatched grading remains available in `result.unmatched_grading`.
 Missing grading, unclear content, repeated grading sections, and distinct raw
-scores produce review notes; no scores are calculated or summed.
+scores produce review notes. The parser retains teacher score decisions separately; the record builder validates them before export.
 
 The parser expects `## Page N` and `### Question LABEL` headings from the current
 OCR prompts. It rejects page 1, non-increasing page numbers, and malformed headings
@@ -136,10 +136,10 @@ result = build_job_records(
 
 Each `result["records"]` entry contains `row` (exactly the 36 dataset columns)
 and `internal` (student sections, original pages, separate teacher grading,
-review notes, and separate null extracted/verified scores). Missing cells are
+review notes, the extracted teacher score, and a separate null verified score). Missing cells are
 empty strings. Supplied JSON lists are serialized into JSON cell strings. No
-reference answers, rubric judgments, numeric scores, or review approvals are
-inferred. Raw teacher feedback is not copied into `grader_feedback`.
+reference answers, independent rubric judgments, or review approvals are inferred.
+Numeric teacher scores come only from validated evidence-backed score decisions. Raw teacher feedback is not copied into `grader_feedback`.
 
 Supply `questions` as a mapping from exact OCR labels to question-level fields
 from the CSV specification, including an explicit `question_id`. Difficulty
@@ -147,8 +147,9 @@ fields also belong to this mapping. Unknown or duplicate labels remain unmapped.
 After an initial build, optional `response_metadata` can be keyed by the returned
 `response_id` to supply response-level fields such as `expected_score` or
 `rubric_analysis`. Unknown response IDs and attempts to override generated IDs or
-student text are rejected. Supplied `expected_score` is a target value only; it
-does not populate extracted or verified scores. Missing origin and sample type
+student text are rejected. Explicitly supplied `expected_score` takes precedence;
+a conflict with the teacher-derived score is flagged. A supplied target does not
+populate extracted or verified scores. Missing origin and sample type
 remain blank. Any supplied `student_id` must already be anonymous.
 
 Runs are atomically saved under `.pipeline/dataset/<source-key>/<attempt-id>/` as
@@ -259,8 +260,9 @@ owned by another worker, so a one-shot invocation does not wait for those jobs.
 All replicas must share the same raw/state/output configuration. Hash checks run
 on each scan and can cost noticeable I/O on large input collections.
 
-The worker integration was checked with synthetic extraction stubs, not live
-Codex calls. Existing OCR still sends graded page images to the student pass;
+The worker integration was initially checked with synthetic extraction stubs.
+A subsequent live single-PDF run verified teacher-score delivery through CSV export;
+this does not establish scoring accuracy. Existing OCR still sends graded page images to the student pass;
 this export work does not fix that previously identified isolation limitation.
 
 See [verification results](docs/pipeline-verification.md) for the synthetic
@@ -295,7 +297,53 @@ Use separate runs/configurations for different exams.
 Per-PDF `questions` metadata overrides individual template fields for the same
 label; per-response data remains in the per-PDF `responses` mapping. Missing
 question wording may remain an empty `question_text`. Reference solutions and
-rubric policies do not assign student scores, generate rubric analysis, or imply
-human review. Unsupported labels remain unmapped. Changes to the template
+rubric policies alone do not assign student scores, generate rubric analysis, or
+imply human review; the teacher pass also requires visible grading evidence. Unsupported labels remain unmapped. Changes to the template
 invalidate the export cache and allow failed polling jobs to retry. Invalid or
 missing explicitly selected templates fail without replacing the previous CSV.
+
+
+## Calculate expected scores from teacher grading
+
+The teacher Codex pass receives an inline JSON rubric containing question IDs,
+maximum scores, criteria, scoring policies, and per-question rubric fingerprints.
+Reference answers/solutions are omitted; this rubric is not given to the student
+pass. The prompt is delivered through stdin, so rubric access requires no shell
+or filesystem tools and large templates avoid command-line size limits. Existing student image-isolation limitations described above still apply.
+
+The teacher pass preserves `Raw score`, `Marks`, and `Feedback` and adds a JSON
+`Score decision` with its proposed award, evidence, reasoning, basis, component
+awards, and rubric fingerprint. It can read a teacher total (including earned/max
+notation), sum explicit component awards, or translate clearly associated marks
+using the supplied rubric. It must not independently grade student correctness.
+An isolated check/cross or absent mark does not automatically mean full credit or
+zero. Partial-credit alternatives are not summed, and parent totals are not
+allocated to subparts. Unclear associations or conflicting evidence require a
+null score and review.
+
+The backend checks question/rubric identity, finite score bounds, evidence fields,
+component sums, duplicate evidence/criterion IDs, and criterion maxima. For scores
+derived from marks, every rubric criterion must have a supported award; otherwise
+the score stays blank. Accepted awards fill a blank `expected_score` and are also
+saved internally as `extracted_score`. Raw observations and calculation reasoning
+are retained separately, and `verified_score` stays null. Explicit per-response
+metadata takes precedence; disagreement with the extracted award is flagged.
+These checks validate structure and arithmetic, not the truth of visual evidence.
+
+Existing three-field grading Markdown has no score decisions. Run the **normal
+worker**, not just `--export-only`, to obtain them. OCR version 3 and rubric
+fingerprints invalidate earlier extraction caches; this currently reruns both
+passes. Changes to the effective shared/per-PDF rubric also trigger new extraction.
+Export-only never calls Codex: it accepts valid saved decisions, leaves missing
+ones blank, and rejects stale decisions by withholding their score for review.
+After finishing active jobs, rebuild/recreate Docker workers to load this code:
+
+```sh
+docker compose up --build -d worker
+```
+
+Synthetic checks cover explicit totals, zero, component sums, weighted marks,
+ambiguity, stale rubrics, invalid bounds, CSV mapping, and a real synthetic PDF
+through the worker with stubbed Codex responses. A live single-PDF rerun then
+confirmed that inline rubric delivery produced populated CSV expected scores.
+No independent scoring-accuracy evaluation was performed, and no test files were created.
