@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import fcntl
 import os
 import shutil
 import subprocess
 import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 from pathlib import Path
 
 import pymupdf
@@ -14,6 +18,44 @@ import pymupdf
 DEFAULT_MODEL = "gpt-6.1-sol"
 DEFAULT_EFFORT = "high"
 VALID_EFFORTS = {"minimal", "low", "medium", "high", "xhigh"}
+
+
+@contextmanager
+def _request_slot(state_dir: Path, limit: int, timeout: int):
+    """Limit active CLI requests across threads and local worker replicas."""
+    slots = state_dir / "codex-slots"
+    slots.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + timeout
+    while True:
+        for index in range(limit):
+            slot = (slots / f"{index}.lock").open("a")
+            try:
+                fcntl.flock(slot, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                slot.close()
+                continue
+            try:
+                yield
+            finally:
+                # Never unlink: replicas must lock the same inode. The OS also
+                # releases this lock if the worker exits unexpectedly.
+                slot.close()
+            return
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"Timed out waiting for a Codex request slot after {timeout} seconds.")
+        time.sleep(0.2)
+
+
+def _limited_pass(state_dir: Path, limit: int, *args, **kwargs) -> str:
+    name = args[1]
+    queued = time.monotonic()
+    print(f"Codex CLI queued: {name} extraction", flush=True)
+    with _request_slot(state_dir, limit, kwargs["timeout"]):
+        started = time.monotonic()
+        print(f"Codex slot acquired: {name} (waited {started - queued:.1f}s)", flush=True)
+        result = _run_pass(*args, **kwargs)
+        print(f"Codex duration: {name} ({time.monotonic() - started:.1f}s)", flush=True)
+        return result
 
 MARKDOWN_FORMAT = r"""
 Output contract:
@@ -188,6 +230,11 @@ def extract_pdf(prepared_pdf: Path, output_path: Path, state_dir: Path) -> Path:
         raise ValueError(f"PIPELINE_CODEX_EFFORT must be one of {', '.join(sorted(VALID_EFFORTS))}.")
     timeout = int(os.environ.get("PIPELINE_CODEX_TIMEOUT_SECONDS", "1800"))
     model = os.environ.get("PIPELINE_CODEX_MODEL", DEFAULT_MODEL)
+    limit = int(os.environ.get("PIPELINE_CODEX_MAX_CONCURRENT", "5"))
+    if limit < 1:
+        raise ValueError("PIPELINE_CODEX_MAX_CONCURRENT must be at least 1.")
+    if timeout < 1:
+        raise ValueError("PIPELINE_CODEX_TIMEOUT_SECONDS must be at least 1.")
     codex = check_codex(model, effort)
     dpi = int(os.environ.get("PIPELINE_CODEX_RENDER_DPI", "200"))
 
@@ -197,47 +244,53 @@ def extract_pdf(prepared_pdf: Path, output_path: Path, state_dir: Path) -> Path:
         # Both passes receive full-color page renders from the same prepared PDF.
         student_images = _render(prepared_pdf, student_dir, dpi)
         grading_images = _render(prepared_pdf, grading_dir, dpi)
-        student = _run_pass(
-            codex,
-            "student",
-            "These full-color page images contain both student work and teacher annotations. "
-            "Transcribe only student handwriting, equations, and diagrams. Identify student work by its context "
-            "and ignore teacher marks, scores, checks, comments, and feedback. Preserve mistakes and incomplete work. "
-            "Do not solve, correct, or guess unclear content. These are pages 2 onward of the original PDF; "
-            "label headings with original page numbers. If a page has no visible student work, write "
-            "[no visible student work] under its page heading.\n\n" + MARKDOWN_FORMAT,
-            student_images,
-            student_dir,
-            model=model, effort=effort, timeout=timeout,
-        )
-        student_response_path = output_path.with_name("student-response.md")
-        _save_markdown(student_response_path, student)
-        print(
-            f"Saved Codex student response: {student_response_path.relative_to(state_dir).as_posix()}",
-            flush=True,
-        )
-        grading = _run_pass(
-            codex,
-            "grading",
-            "Transcribe only teacher grading marks, comments, and raw score notation from these color images. "
-            "They are pages 2 onward of the original PDF. Do not re-grade, solve, or infer scores. "
-            "Mark unclear meaning or question association explicitly. Under each question heading use these "
-            "three fields in this order: `Raw score:`, `Marks:`, `Feedback:`. Use [not visible] for an absent "
-            "field. Keep raw score notation as literal text, unchanged (do not convert a score such as 2/5 "
-            "into a LaTeX fraction or a computed value). Describe visible checks and crosses in words. "
-            "Use LaTeX for mathematical expressions in feedback, following the output contract. "
-            "If a page has no visible grading, write [no visible grading] under its page heading.\n\n"
-            + MARKDOWN_FORMAT,
-            grading_images,
-            grading_dir,
-            model=model, effort=effort, timeout=timeout,
-        )
-        grading_response_path = output_path.with_name("grading-response.md")
-        _save_markdown(grading_response_path, grading)
-        print(
-            f"Saved Codex grading response: {grading_response_path.relative_to(state_dir).as_posix()}",
-            flush=True,
-        )
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            student_future = pool.submit(
+                _limited_pass, state_dir, limit,
+                codex,
+                "student",
+                "These full-color page images contain both student work and teacher annotations. "
+                "Transcribe only student handwriting, equations, and diagrams. Identify student work by its context "
+                "and ignore teacher marks, scores, checks, comments, and feedback. Preserve mistakes and incomplete work. "
+                "Do not solve, correct, or guess unclear content. These are pages 2 onward of the original PDF; "
+                "label headings with original page numbers. If a page has no visible student work, write "
+                "[no visible student work] under its page heading.\n\n" + MARKDOWN_FORMAT,
+                student_images,
+                student_dir,
+                model=model, effort=effort, timeout=timeout,
+            )
+            grading_future = pool.submit(
+                _limited_pass, state_dir, limit,
+                codex,
+                "grading",
+                "Transcribe only teacher grading marks, comments, and raw score notation from these color images. "
+                "They are pages 2 onward of the original PDF. Do not re-grade, solve, or infer scores. "
+                "Mark unclear meaning or question association explicitly. Under each question heading use these "
+                "three fields in this order: `Raw score:`, `Marks:`, `Feedback:`. Use [not visible] for an absent "
+                "field. Keep raw score notation as literal text, unchanged (do not convert a score such as 2/5 "
+                "into a LaTeX fraction or a computed value). Describe visible checks and crosses in words. "
+                "Use LaTeX for mathematical expressions in feedback, following the output contract. "
+                "If a page has no visible grading, write [no visible grading] under its page heading.\n\n"
+                + MARKDOWN_FORMAT,
+                grading_images,
+                grading_dir,
+                model=model, effort=effort, timeout=timeout,
+            )
+            passes = {student_future: "student", grading_future: "grading"}
+            responses = {}
+            errors = []
+            for future in as_completed(passes):
+                name = passes[future]
+                try:
+                    responses[name] = future.result()
+                    response_path = output_path.with_name(f"{name}-response.md")
+                    _save_markdown(response_path, responses[name])
+                    print(f"Saved Codex {name} response: {response_path.relative_to(state_dir).as_posix()}", flush=True)
+                except Exception as exc:
+                    errors.append(exc)
+            if errors:
+                raise RuntimeError("; ".join(str(exc) for exc in errors)) from errors[0]
+            student, grading = responses["student"], responses["grading"]
 
     _save_markdown(output_path, f"# OCR extraction\n\n## Student work\n\n{student}\n\n## Teacher grading\n\n{grading}")
     return output_path

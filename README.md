@@ -49,6 +49,17 @@ These data directories and local credentials are excluded from Git. Never commit
 
 ## Reading OCR Markdown
 
+Student and grading CLI passes are scheduled concurrently in separate working folders.
+`PIPELINE_CODEX_MAX_CONCURRENT` (default `5`) caps active extraction requests across all
+worker replicas sharing `.pipeline/`, using local Linux file locks. Use the same limit
+in every worker and stop all workers before changing it. Slot files must not be deleted
+while workers run; locks release automatically when a worker exits. Waiting for a slot
+and running a pass each have the configured extraction timeout (default 1800 seconds).
+Logs report queue wait and extraction duration. Each successful response is saved as it
+finishes; combined OCR is replaced only after both passes succeed. Model, effort, and
+image resolution are unchanged. This may reduce per-PDF latency; throughput still depends
+on available Codex capacity. Restart/rebuild workers to load these changes.
+
 Open a response file in VS Code and use Markdown Preview (`Ctrl+Shift+V`). Extraction prompts
 request `$...$` inline math and separate `$$` display blocks using standard KaTeX/MathJax
 commands, with consistent page/question headings. Grading responses use `Raw score:`,
