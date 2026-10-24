@@ -1,6 +1,6 @@
 # Local PDF Pipeline
 
-Local pipeline for processing PDFs stored under `raw/`. The worker recursively finds PDFs, removes the first page into a local working copy, and renders the remaining pages to images under `.pipeline/`. Answer extraction and CSV generation are not implemented yet.
+Local pipeline for processing PDFs stored under `raw/`. The worker recursively finds PDFs, removes the first page into a local working copy, then saves untouched grading renders, red masks, and red-suppressed student views under a clearly named job folder in `.pipeline/jobs/`. Answer extraction and CSV generation are not implemented yet.
 
 ## Run with Docker
 

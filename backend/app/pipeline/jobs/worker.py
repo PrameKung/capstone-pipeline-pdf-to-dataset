@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
@@ -24,11 +25,11 @@ def _claim_key(raw_dir: Path, pdf_path: Path) -> str:
 
 def process_pdf(raw_dir: Path, state_dir: Path, pdf_path: Path) -> bool:
     """Cut the first page and render remaining pages, coordinating workers."""
-    jobs_dir = state_dir / "jobs"
-    jobs_dir.mkdir(parents=True, exist_ok=True)
+    claims_dir = state_dir / "claims"
+    claims_dir.mkdir(parents=True, exist_ok=True)
     key = _claim_key(raw_dir, pdf_path)
-    done_file = jobs_dir / f"{key}.rendered"
-    lock_file = jobs_dir / f"{key}.lock"
+    done_file = claims_dir / f"{key}.rendered"
+    lock_file = claims_dir / f"{key}.lock"
 
     try:
         lock_fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -40,9 +41,9 @@ def process_pdf(raw_dir: Path, state_dir: Path, pdf_path: Path) -> bool:
         if done_file.exists():
             return False
         relative_path = pdf_path.relative_to(raw_dir)
-        artifact_dir = state_dir / "artifacts" / key
-        images = cut_first_page_and_render(pdf_path, artifact_dir)
-        print(f"Rendered {len(images)} pages from {relative_path.as_posix()}", flush=True)
+        job_dir = state_dir / "jobs" / relative_path.with_suffix("")
+        images = cut_first_page_and_render(pdf_path, job_dir)
+        print(f"Prepared {len(images)} pages for {relative_path.as_posix()} in {job_dir}", flush=True)
         done_file.touch()
         return True
     finally:
@@ -64,12 +65,12 @@ def run_worker(raw_dir: Path, state_dir: Path, workers: int, poll_seconds: float
                 future.result()
             running.difference_update(finished)
 
-            jobs_dir = state_dir / "jobs"
+            claims_dir = state_dir / "claims"
             candidates = [
                 path
                 for path in find_pdfs(raw_dir)
-                if not (jobs_dir / f"{_claim_key(raw_dir, path)}.rendered").exists()
-                and not (jobs_dir / f"{_claim_key(raw_dir, path)}.lock").exists()
+                if not (claims_dir / f"{_claim_key(raw_dir, path)}.rendered").exists()
+                and not (claims_dir / f"{_claim_key(raw_dir, path)}.lock").exists()
             ]
             available = workers - len(running)
             for path in candidates[:available]:
