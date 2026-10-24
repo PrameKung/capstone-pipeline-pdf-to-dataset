@@ -2,7 +2,7 @@
 
 ## Current state
 
-The repository has a local parallel PDF preprocessing stage. It recursively finds PDFs under `raw/`, claims each path so multiple workers do not process it at once, removes page 1 into a working PDF, renders pages 2 onward, detects likely red ink, and creates red-suppressed student views. For `raw/signal/318/1.pdf`, inspect `.pipeline/jobs/signal/318/1/`. A `.rendered` marker under `.pipeline/claims/` prevents the same path from running again. Python worker count and Docker worker replicas can be configured.
+The repository has a local parallel PDF preprocessing stage. It recursively finds PDFs under `raw/`, claims each path so multiple workers do not process it at once, removes page 1 into a working PDF, renders pages 2 onward, saves likely-red masks, and creates student views from the red channel in grayscale. This reduces red-mark contrast without whitening adjacent writing. For `raw/signal/318/1.pdf`, inspect `.pipeline/jobs/signal/318/1/`. A versioned `.rendered` marker under `.pipeline/claims/` skips current results; bumping the preprocessing version regenerates them. Python worker count and Docker worker replicas can be configured.
 
 This is an initial processing stage only. It does not extract answers or create CSV output.
 
@@ -24,7 +24,7 @@ This is an initial processing stage only. It does not extract answers or create 
 - [ ] Extract student work and teacher grading in isolated Codex CLI passes using the local subscription login.
 - [ ] Validate records, retain provenance, and surface only ambiguous or failed rows for review.
 - [ ] Write one schema-compliant CSV per PDF under the matching `output/` subfolder. Validate each new CSV and replace an older successful export only after the new run succeeds.
-- [ ] Add durable job states, resumable checkpoints, safe retries, and failure reporting. Current `.rendered` markers are not content-aware: changing a PDF at an already completed path does not start a new job.
+- [ ] Add durable job states, resumable checkpoints, safe retries, and failure reporting. Render markers are not content-aware: changing a PDF at an already completed path does not start a new job.
 - [ ] Add safe synthetic fixtures and verify the full flow, including parallel workers and the output folder containing CSV files only.
 
 ## Next implementation milestone

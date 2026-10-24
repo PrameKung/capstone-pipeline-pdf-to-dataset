@@ -10,9 +10,9 @@ flowchart TD
     C --> D[Render pages to images]
     D --> E[Keep original page numbers]
     E --> F[Save untouched grading view]
-    E --> G[Detect red pixels and save mask]
+    E --> G[Detect likely red pixels and save mask]
     F --> H[Save original grading images]
-    G --> I[Create student view<br/>replace masked pixels with white]
+    G --> I[Create student view<br/>red-channel grayscale]
     G --> J[Save possible overlap mask]
 
     I --> K[Student extraction pass]

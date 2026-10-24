@@ -1,4 +1,4 @@
-"""Remove the identity page, render the remaining pages, and mask red marks."""
+"""Remove the identity page, render remaining pages, and prepare student views."""
 
 from __future__ import annotations
 
@@ -12,6 +12,12 @@ import cv2
 import numpy as np
 import pymupdf
 
+PREPROCESS_VERSION = 9
+RED_HUE_RANGES = ((0, 20), (160, 180))
+RED_MIN_SATURATION = 15
+RED_MIN_VALUE = 20
+RED_MIN_CHANNEL_MARGIN = 8
+
 
 def make_student_view(
     grading_image: Path,
@@ -19,20 +25,45 @@ def make_student_view(
     student_image_path: Path,
     overlap_candidates_path: Path,
 ) -> int:
-    """Save a red-ink mask and a student view with masked pixels whitened.
+    """Save red-ink evidence and a grayscale student view from the red channel.
 
-    The input grading image is never changed. Possible dark-writing overlaps are
-    saved separately for inspection; obscured handwriting is not reconstructed.
+    Red ink is usually much lighter in the red channel than in the other
+    channels. Using it for the student view suppresses red without deleting
+    nearby dark writing. The input grading image is never changed; possible
+    dark-writing overlaps are saved separately for inspection.
     """
     image = cv2.imread(str(grading_image), cv2.IMREAD_COLOR)
     if image is None:
         raise ValueError(f"Could not read rendered page: {grading_image.name}")
 
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    low_red = cv2.inRange(hsv, np.array((0, 35, 35)), np.array((10, 255, 255)))
-    high_red = cv2.inRange(hsv, np.array((170, 35, 35)), np.array((180, 255, 255)))
+    low_red = cv2.inRange(
+        hsv,
+        np.array((RED_HUE_RANGES[0][0], RED_MIN_SATURATION, RED_MIN_VALUE)),
+        np.array((RED_HUE_RANGES[0][1], 255, 255)),
+    )
+    high_red = cv2.inRange(
+        hsv,
+        np.array((RED_HUE_RANGES[1][0], RED_MIN_SATURATION, RED_MIN_VALUE)),
+        np.array((RED_HUE_RANGES[1][1], 255, 255)),
+    )
     red_mask = cv2.bitwise_or(low_red, high_red)
-    red_mask = cv2.dilate(red_mask, np.ones((3, 3), dtype=np.uint8), iterations=1)
+
+    # Require red to be measurably stronger than both other color channels.
+    blue, green, red = cv2.split(image)
+    red_channel = red.astype(np.int16)
+    red_dominant = (
+        (red_channel - green.astype(np.int16) >= RED_MIN_CHANNEL_MARGIN)
+        & (red_channel - blue.astype(np.int16) >= RED_MIN_CHANNEL_MARGIN)
+    )
+    red_mask = cv2.bitwise_and(red_mask, red_dominant.astype(np.uint8) * 255)
+    # Bridge tiny breaks in detected strokes without expanding into nearby paper.
+    red_mask = cv2.morphologyEx(
+        red_mask,
+        cv2.MORPH_CLOSE,
+        np.ones((7, 7), dtype=np.uint8),
+        iterations=1,
+    )
 
     # Flag dark pixels close to detected red marks as possible overlaps.
     nearby_red = cv2.dilate(red_mask, np.ones((7, 7), dtype=np.uint8), iterations=1)
@@ -41,8 +72,10 @@ def make_student_view(
     overlap_candidates = cv2.bitwise_and(nearby_red, dark_pixels)
     overlap_candidates = cv2.bitwise_and(overlap_candidates, cv2.bitwise_not(red_mask))
 
-    student_view = image.copy()
-    student_view[red_mask > 0] = (255, 255, 255)
+    # A red-channel grayscale view fades red ink without expanding a binary
+    # mask across adjacent student strokes. Keep the untouched color render for
+    # teacher-mark extraction and provenance.
+    student_view = cv2.cvtColor(red, cv2.COLOR_GRAY2BGR)
 
     for path, data in (
         (red_mask_path, red_mask),
@@ -110,6 +143,7 @@ def cut_first_page_and_render(
             )
 
         summary = {
+            "preprocess_version": PREPROCESS_VERSION,
             "source_name": source_pdf.name,
             "render_dpi": dpi,
             "processed_original_pages": [
@@ -117,12 +151,14 @@ def cut_first_page_and_render(
             ],
             "red_pixel_counts": red_pixel_counts,
             "red_mask": {
-                "hue_ranges": [[0, 10], [170, 180]],
-                "minimum_saturation": 35,
-                "minimum_value": 35,
-                "dilation_kernel": 3,
+                "hue_ranges": [list(bounds) for bounds in RED_HUE_RANGES],
+                "minimum_saturation": RED_MIN_SATURATION,
+                "minimum_value": RED_MIN_VALUE,
+                "minimum_red_channel_margin": RED_MIN_CHANNEL_MARGIN,
+                "mask_operation": "7x7 morphological close to bridge gaps; used for evidence and overlap flags",
+                "overlap_candidate_dilation_kernel": 7,
             },
-            "student_view": "Detected red pixels are replaced with white. Possible overlaps are saved as masks; hidden writing is not reconstructed.",
+            "student_view": "Grayscale from the red channel to reduce red-mark contrast without whitening adjacent student writing. Untouched color renders are retained for grading evidence.",
         }
         (staging_dir / "preprocessing.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 

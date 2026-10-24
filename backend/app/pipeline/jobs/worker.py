@@ -9,7 +9,7 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
-from app.pipeline.pdf.preprocess import cut_first_page_and_render
+from app.pipeline.pdf.preprocess import PREPROCESS_VERSION, cut_first_page_and_render
 
 
 def find_pdfs(raw_dir: Path) -> list[Path]:
@@ -21,6 +21,13 @@ def find_pdfs(raw_dir: Path) -> list[Path]:
 def _claim_key(raw_dir: Path, pdf_path: Path) -> str:
     relative_path = pdf_path.relative_to(raw_dir).as_posix()
     return hashlib.sha256(relative_path.encode("utf-8")).hexdigest()
+
+
+def _is_current(done_file: Path) -> bool:
+    try:
+        return done_file.read_text(encoding="utf-8").strip() == str(PREPROCESS_VERSION)
+    except OSError:
+        return False
 
 
 def process_pdf(raw_dir: Path, state_dir: Path, pdf_path: Path) -> bool:
@@ -38,13 +45,13 @@ def process_pdf(raw_dir: Path, state_dir: Path, pdf_path: Path) -> bool:
 
     try:
         os.close(lock_fd)
-        if done_file.exists():
+        if _is_current(done_file):
             return False
         relative_path = pdf_path.relative_to(raw_dir)
         job_dir = state_dir / "jobs" / relative_path.with_suffix("")
         images = cut_first_page_and_render(pdf_path, job_dir)
         print(f"Prepared {len(images)} pages for {relative_path.as_posix()} in {job_dir}", flush=True)
-        done_file.touch()
+        done_file.write_text(f"{PREPROCESS_VERSION}\n", encoding="utf-8")
         return True
     finally:
         lock_file.unlink(missing_ok=True)
@@ -69,7 +76,7 @@ def run_worker(raw_dir: Path, state_dir: Path, workers: int, poll_seconds: float
             candidates = [
                 path
                 for path in find_pdfs(raw_dir)
-                if not (claims_dir / f"{_claim_key(raw_dir, path)}.rendered").exists()
+                if not _is_current(claims_dir / f"{_claim_key(raw_dir, path)}.rendered")
                 and not (claims_dir / f"{_claim_key(raw_dir, path)}.lock").exists()
             ]
             available = workers - len(running)
