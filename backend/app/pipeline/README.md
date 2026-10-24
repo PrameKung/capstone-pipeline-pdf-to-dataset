@@ -17,6 +17,6 @@ Suggested module responsibilities:
 - `dataset/`: response schemas, student/grading merge and validation, and atomic CSV writing that preserves the last successful export on failure.
 - `jobs/`: `.pipeline/` state, checkpoints, atomic worker claiming, cancellation, retries, and concurrency limits shared by local Docker worker replicas.
 
-The worker entrypoint is `python -m app.pipeline.jobs.worker`. For `raw/signal/318/1.pdf`, the inspectable job folder is `.pipeline/jobs/signal/318/1/`. It contains only `pages-without-first.pdf`. Worker completion markers are stored separately under `.pipeline/claims/`. Page rendering, answer extraction, and CSV export are not implemented on this branch.
+The worker entrypoint is `python -m app.pipeline.jobs.worker`. For `raw/signal/318/1.pdf`, the inspectable job folder is `.pipeline/jobs/signal/318/1/`. It contains `pages-without-first.pdf` and the combined student/grading `ocr.md`. Worker completion markers are stored separately under `.pipeline/claims/`. Structured question mapping and CSV export are not implemented on this branch.
 
 Keep source PDFs and generated CSVs out of this package. Inputs live under `raw/`, published CSVs under `output/`, and local state and intermediates under `.pipeline/`.

@@ -71,4 +71,4 @@ Use the fixed header, column meanings, and encoding rules in [CSV output format]
 
 Before claiming the pipeline works, verify with synthetic fixtures that are safe to commit. If a real sample PDF is available locally, use it only for manual quality review and do not publish its personal data.
 
-Check PDF validation, recursive discovery under `raw/`, first-page removal, and that each job folder contains only `pages-without-first.pdf`. Extraction and CSV export are outside this branch's scope.
+Check PDF validation, recursive discovery under `raw/`, first-page removal, isolated Codex student/grading passes, and Markdown output in each job folder. Structured extraction and CSV export are outside this branch's scope.

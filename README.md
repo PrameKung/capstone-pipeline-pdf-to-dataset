@@ -1,11 +1,12 @@
 # Local PDF Pipeline
 
-This testing branch recursively finds PDFs under `raw/` and creates one prepared PDF per source, with page 1 removed. The job folder under `.pipeline/jobs/` contains only `pages-without-first.pdf`. Rendering, student views, extraction, and CSV generation are not part of this branch.
+This testing branch recursively finds PDFs under `raw/`, removes page 1 from each working copy, and runs Codex OCR. Each job folder under `.pipeline/jobs/` contains `pages-without-first.pdf` and `ocr.md`. CSV generation is not implemented on this branch.
 
 ## Run with Docker
 
 ```sh
-cp .env.example .env  # optional; only needed for custom paths or worker settings
+codex login            # sign in on the host with your ChatGPT subscription
+cp .env.example .env   # set CODEX_AUTH_FILE_HOST if your login file is elsewhere
 docker compose up --build
 ```
 
@@ -24,6 +25,7 @@ Stop containers with `docker compose down`.
 - **Host folders:** `PIPELINE_RAW_HOST_DIR`, `PIPELINE_OUTPUT_HOST_DIR`, `PIPELINE_STATE_HOST_DIR`
 - **Container permissions:** `PIPELINE_UID`, `PIPELINE_GID` (default `0:0`, which maps to your user with rootless Docker)
 - **Worker capacity:** `PIPELINE_WORKERS` (parallel PDFs per container) and `PIPELINE_POLL_SECONDS` (scan interval)
+- **Codex login:** `CODEX_AUTH_FILE_HOST` (host auth file mounted read-only into the worker)
 
 Defaults use the repository's `raw/`, `output/`, and `.pipeline/` folders, run two PDFs concurrently per worker container, and poll every five seconds.
 
@@ -34,7 +36,7 @@ make backend-sync
 make pipeline-once
 ```
 
-Set `PIPELINE_WORKERS` to change the number of concurrent PDFs per worker process. Docker replicas share `.pipeline/` and atomically claim each PDF path. A path is skipped after successful preparation; replacing its PDF does not currently trigger a rerun.
+The worker image includes Codex CLI and uses the host's `codex login` file through a read-only mount. It makes a temporary runtime copy inside the container so CLI state does not write back to host credentials. Set `PIPELINE_WORKERS` to change concurrent PDF jobs. Docker replicas share `.pipeline/` and atomically claim each PDF path. A path is skipped after successful OCR; replacing its PDF does not currently trigger a rerun.
 
 ## Local data
 
