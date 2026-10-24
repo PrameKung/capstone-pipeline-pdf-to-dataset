@@ -1,0 +1,12 @@
+# Local source PDFs and generated CSV exports
+/raw/
+/output/
+
+# Local worker state, checkpoints, logs, and intermediate evidence
+/.pipeline/
+
+# Local secrets and Python environments
+.env
+.venv/
+__pycache__/
+*.py[cod]
