@@ -1,45 +1,40 @@
 # Pipeline flow
 
-The page-removal and rendering stage is implemented. The remaining steps are planned.
+The normal worker prepares, extracts, validates, and exports each PDF. The
+export-only command starts from existing Markdown and never invokes Codex.
 
 ```mermaid
 flowchart TD
-    A[PDF in raw/] --> B[Remove page 1]
-    A -. keep unchanged .-> A
-    B --> C[Working PDF in .pipeline/]
-    C --> D[Render pages to images]
-    D --> E[Keep original page numbers]
-    E --> F[Save untouched grading view]
-    E --> G[Detect likely red pixels and save mask]
-    F --> H[Save original grading images]
-    G --> I[Create student view<br/>red-channel grayscale]
-    G --> J[Save possible overlap mask]
-
-    I --> K[Student extraction pass]
-    H --> L[Teacher mark extraction pass]
-    K --> M[Combine extracted records]
-    L --> M
-    M --> N[Format readable Markdown]
-    N --> O[Map and validate CSV fields]
-    O --> P[Write one CSV under output/]
-
-    Q[Opposite-page red bleed-through] -. compare paired page evidence .-> G
-    J -. inspect uncertainty .-> L
+    A[Discover PDFs recursively in raw/] --> B[Claim source with shared file lock]
+    B --> C{Export only?}
+    C -->|No| D{Current extraction manifest and artifacts?}
+    D -->|No| E[Prepare pages 2 onward and run OCR passes]
+    E --> F[Save extraction manifest]
+    D -->|Yes| G[Read student and grading Markdown]
+    F --> G
+    C -->|Yes| G
+    G --> H{Export inputs and CSV checksum unchanged?}
+    H -->|Yes| I[Skip cached export]
+    H -->|No| J[Parse and match responses]
+    J --> K[Attach supplied metadata and stable IDs]
+    K --> L[Validate and save internal JSON run]
+    L --> M{Any failed records?}
+    M -->|Yes| N[Record failure and keep previous CSV]
+    M -->|No| O[Write and round-trip-check staging CSV]
+    O --> P[Atomically replace final CSV]
 ```
 
-The extraction passes use separate inputs: the student pass receives only the student view, while the grading pass receives the untouched grading view. Their results can be combined into a readable Markdown record, then mapped to the fixed CSV format. Keep the untouched page renders as evidence and flag uncertain marks rather than guessing. Each PDF's inspectable working files are grouped by its path under `raw/`; for example, `raw/signal/318/1.pdf` uses `.pipeline/jobs/signal/318/1/`.
+For `raw/signal/318/1.pdf`:
 
-Example Markdown record for a question:
+- `.pipeline/jobs/signal/318/1/` holds the prepared PDF, separate OCR responses,
+  and combined `ocr.md`. Rendering uses temporary workspaces.
+- `.pipeline/dataset/` holds internal JSON runs with provenance and review issues.
+- `.pipeline/claims/` holds shared locks, extraction/export manifests, and failures.
+- `output/signal/318/1.csv` holds the 36-column dataset. Review status and raw
+  teacher records remain in internal JSON, outside the CSV schema.
 
-```md
-## Question 1
-
-### Student answer
-x + 5 = 10
-x = 10 - 5
-x = 5
-
-### Teacher mark
-Raw mark: check symbol beside “x = 5”
-Score: unclear
-```
+The source stays unchanged and page 1 is excluded from prepared content.
+`needs_review` rows are exported; `failed` records block publication. The student
+OCR pass currently still receives graded images, so the intended input-isolation
+requirement is not yet satisfied. See [verification](pipeline-verification.md)
+for what has been checked and what remains unverified.

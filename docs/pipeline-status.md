@@ -1,34 +1,37 @@
 # Pipeline implementation status
 
-## Current state
-
-The repository has a local parallel PDF preprocessing stage. It recursively finds PDFs under `raw/`, claims each path so multiple workers do not process it at once, removes page 1 into a working PDF, renders pages 2 onward, saves likely-red masks, and creates student views from the red channel in grayscale. This reduces red-mark contrast without whitening adjacent writing. For `raw/signal/318/1.pdf`, inspect `.pipeline/jobs/signal/318/1/`. A versioned `.rendered` marker under `.pipeline/claims/` skips current results; bumping the preprocessing version regenerates them. Python worker count and Docker worker replicas can be configured.
-
-This is an initial processing stage only. It does not extract answers or create CSV output.
-
 ## Implemented
 
-- [x] Local `raw/`, `output/`, and `.pipeline/` layout with Docker mounts.
-- [x] Recursive PDF discovery and a local thread pool.
-- [x] Atomic per-path worker claims shared through `.pipeline/` across Docker replicas.
-- [x] Create a working PDF without page 1, render remaining pages, and mark successful preprocessing.
-- [x] FastAPI health endpoint and local Docker startup.
-- [x] Documented CSV output schema and intended processing behavior.
+- Recursive PDF discovery, concurrent local workers, and shared job locks.
+- Prepared PDFs excluding page 1; source files remain unchanged.
+- Separate student/grading OCR Markdown passes through Codex CLI.
+- Markdown parsing, cross-page grouping, and conservative question matching.
+- Exact 36-column record building with supplied metadata, stable IDs for unchanged
+  response structure, checksums, and internal provenance.
+- Record validation with failed/review statuses and preserved supplied values.
+- Rubric-aware teacher score decisions mapped to expected_score after checks, with
+  raw evidence and extracted/verified score distinctions retained internally.
+- Atomic CSV publication, mirrored output paths, round-trip validation, and
+  preservation of the previous export on pre-publication failures.
+- Existing-Markdown export without OCR, content-aware caches, source/configuration
+  invalidation, internal failure records, and local Docker output mounts.
 
-## Remaining to reach the goal
+## Remaining limitations
 
-- [ ] Validate PDFs and compute source checksums; persist stable attempt, response, and run IDs.
-- [x] Exclude page 1 before making any derived artifact; render later pages with original page numbers retained.
-- [x] Generate red-ink masks and student views without altering source PDFs; save possible overlaps for inspection.
-- [ ] Map questions and preserve unmapped answers with a blank question ID and `needs_review` status.
-- [ ] Extract student work and teacher grading in isolated Codex CLI passes using the local subscription login.
-- [ ] Validate records, retain provenance, and surface only ambiguous or failed rows for review.
-- [ ] Write one schema-compliant CSV per PDF under the matching `output/` subfolder. Validate each new CSV and replace an older successful export only after the new run succeeds.
-- [ ] Add durable job states, resumable checkpoints, safe retries, and failure reporting. Render markers are not content-aware: changing a PDF at an already completed path does not start a new job.
-- [ ] Add safe synthetic fixtures and verify the full flow, including parallel workers and the output folder containing CSV files only.
+- The student OCR pass still receives graded images; it does not meet the intended
+  input-isolation requirement. Prompts alone do not establish isolation.
+- Legacy Markdown has no historical source/configuration manifest. Export-only
+  retains provenance warnings; normal processing regenerates those jobs.
+- Unresolved response identities use page/occurrence order; changed OCR structure
+  can require ID reconciliation.
+- No review UI or human-verification workflow; review issues are in internal JSON.
+- OCR retries rerun both passes; successful individual passes are not checkpointed.
+- Synthetic inline checks covered parsing, records, validation, export, and worker
+  integration with extraction stubs. Task 5 additionally checked real export-only
+  CLI subprocesses, concurrent claims, lock-owner termination, and publication
+  failure recovery. Docker Compose configuration validates; live extraction
+  accuracy and Docker runtime behavior remain unverified.
 
-## Next implementation milestone
+See the README for export commands, metadata inputs, caching, and upgrade notes.
 
-Add PDF checksums and durable per-run records around preprocessing, then compare paired pages to better distinguish reverse-side bleed-through from teacher marks.
-
-See [pipeline overview](pipeline-overview.md), [pipeline behavior](pipeline-behavior.md), and [CSV output format](csv-output-format.md) for the target design and schema.
+See [verification results](pipeline-verification.md) for the checked cases and limits.

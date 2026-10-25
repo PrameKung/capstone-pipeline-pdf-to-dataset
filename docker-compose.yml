@@ -2,6 +2,8 @@ services:
   backend:
     build:
       context: ./backend
+    cpus: "${PIPELINE_BACKEND_CPUS:-0.5}"
+    mem_limit: ${PIPELINE_BACKEND_MEMORY:-512m}
     ports:
       - "127.0.0.1:8000:8000"
     environment:
@@ -28,6 +30,8 @@ services:
   worker:
     build:
       context: ./backend
+    cpus: "${PIPELINE_WORKER_CPUS:-1.0}"
+    mem_limit: ${PIPELINE_WORKER_MEMORY:-2g}
     command:
       - python
       - -m
@@ -35,10 +39,21 @@ services:
     environment:
       RAW_DIR: /data/raw
       PIPELINE_DATA_DIR: /data/.pipeline
+      OUTPUT_DIR: /data/output
       PIPELINE_WORKERS: ${PIPELINE_WORKERS:-2}
+      PIPELINE_METADATA_DIR: ${PIPELINE_METADATA_DIR:-/data/.pipeline/metadata}
+      PIPELINE_QUESTION_TEMPLATE: ${PIPELINE_QUESTION_TEMPLATE:-}
       PIPELINE_POLL_SECONDS: ${PIPELINE_POLL_SECONDS:-5}
+      PIPELINE_CODEX_MODEL: ${PIPELINE_CODEX_MODEL:-gpt-6.1-sol}
+      PIPELINE_CODEX_EFFORT: ${PIPELINE_CODEX_EFFORT:-high}
+      PIPELINE_CODEX_MAX_CONCURRENT: ${PIPELINE_CODEX_MAX_CONCURRENT:-5}
+      CODEX_HOME: /tmp/codex-home
+      CODEX_AUTH_FILE: /run/codex-auth/auth.json
     volumes:
       - ${PIPELINE_RAW_HOST_DIR:-./raw}:/data/raw:ro
       - ${PIPELINE_STATE_HOST_DIR:-./.pipeline}:/data/.pipeline
+      - ${PIPELINE_OUTPUT_HOST_DIR:-./output}:/data/output
+      - ${PIPELINE_TEMPLATES_HOST_DIR:-./templates}:/data/templates:ro
+      - ${CODEX_AUTH_FILE_HOST:-${HOME}/.codex/auth.json}:/run/codex-auth/auth.json:ro
     user: "${PIPELINE_UID:-0}:${PIPELINE_GID:-0}"
     restart: unless-stopped

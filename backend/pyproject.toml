@@ -4,8 +4,6 @@ version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.115,<1",
-    "numpy>=1.26,<3",
-    "opencv-python-headless>=4.10,<5",
     "pymupdf>=1.24,<2",
     "uvicorn>=0.30,<1",
 ]
