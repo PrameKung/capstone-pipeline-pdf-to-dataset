@@ -321,6 +321,16 @@ zero. Partial-credit alternatives are not summed, and parent totals are not
 allocated to subparts. Unclear associations or conflicting evidence require a
 null score and review.
 
+The grading prompt recognizes red checks, vertical/rising strokes, and checks
+missing their short arm/head (ไม่มีหัว) as possible positive marks, usually worth
+one point on a one-point step. It rechecks scope and rubric weights: a check on
+a complete two-point subpart can award two points. Numeric awards and fractions
+are preserved, and a check beside the same numeric award is not counted again.
+Distinct numeric component awards can be summed without a written total when
+their scope is clear; unmarked criteria are never filled with invented zeros.
+These reading rules were calibrated against two locally corrected samples;
+their private CSV/PDF content is not embedded in the prompt or repository.
+
 The backend checks question/rubric identity, finite score bounds, evidence fields,
 component sums, duplicate evidence/criterion IDs, and criterion maxima. For scores
 derived from marks, every rubric criterion must have a supported award; otherwise
@@ -331,7 +341,7 @@ metadata takes precedence; disagreement with the extracted award is flagged.
 These checks validate structure and arithmetic, not the truth of visual evidence.
 
 Existing three-field grading Markdown has no score decisions. Run the **normal
-worker**, not just `--export-only`, to obtain them. OCR version 3 and rubric
+worker**, not just `--export-only`, to obtain them. OCR version 4 and rubric
 fingerprints invalidate earlier extraction caches; this currently reruns both
 passes. Changes to the effective shared/per-PDF rubric also trigger new extraction.
 Export-only never calls Codex: it accepts valid saved decisions, leaves missing

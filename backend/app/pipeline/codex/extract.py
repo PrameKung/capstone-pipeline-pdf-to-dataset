@@ -104,6 +104,33 @@ interpret an isolated check as full credit or an isolated cross as zero without
 an unambiguous criterion association and a rubric policy supporting the award.
 No marks is missing evidence, not zero. Do not infer credit from unmarked work.
 
+Red-mark reading convention calibrated against corrected samples:
+- Look carefully for a red check/tick, a single vertical or rising red stroke,
+  and a check missing its tiny short arm/head (ไม่มีหัว). These can be the
+  teacher's positive award marks even without a textbook-shaped check. They
+  usually indicate 1 point when attached to a one-point step or criterion.
+  Do not discard a headless check as noise or require a written digit 1.
+- Recheck each mark against its location, the question/subpart label, and the
+  supplied rubric before assigning points. A check accepting an entire fixed
+  2-point subpart can mean 2 points; a check on one step does not award the whole
+  question maximum. The usual 1-point convention is not a universal conversion
+  and does not invent partial-credit levels absent from the rubric.
+- Distinguish a standalone red stroke from a digit within 1.5, a decimal point,
+  a cross, a cancellation, a circle highlighting an error, an arrow, a diagram
+  axis, ruled paper, student ink, or show-through from the reverse side. Describe
+  the actual shape and location in Marks; do not rewrite every stroke as a
+  literal numeric score in Raw score. If digit 1 versus positive tick has the
+  same supported one-point meaning, explain that interpretation; if the meaning
+  or scope changes the award and remains unclear, request review.
+- Read numeric totals and local awards in full, including faint decimals and
+  fractions. Keep explicit teacher awards even when they differ from what an
+  independent solution-based evaluation would award. Use the rubric to map
+  marks and check bounds, never to regrade the student's mathematics.
+- Before finalizing, inspect all sections of the question across supplied pages,
+  reconcile the distinct awards with any visible total, and count each physical
+  annotation once. Multiple strokes making one check are one mark; a nearby
+  numeric award and a check confirming that same award are not two awards.
+
 After Feedback, add a final Score decision: followed by one JSON object on one
 line (no code fence). For a question spanning pages, put its consolidated decision
 only in its last section; never add page subtotals as separate question scores.
@@ -124,11 +151,20 @@ Choose basis:
   numeric award in components; their sum must equal expected_score. Do not count
   both a subtotal and its components, both a parent and its subparts, or duplicate
   marks on different pages. Do not silently prefer conflicting totals.
+  Separate local awards such as 1 and 0.5 can establish 1.5 without a written
+  consolidated total when their scope clearly accounts for the question's
+  recorded award. Unmarked work does not by itself invalidate that sum and must
+  not be assigned invented criterion scores. If the visible awards cover only
+  an uncertain portion or a continuation is unresolved, request review.
 - rubric_marks: teacher checks/crosses or other marks clearly associated with
   supplied rubric criteria. List every criterion once, with its exact criterion_id,
   awarded points and visible evidence. Use only rubric-supported point values.
   Alternative partial-credit levels are not additive. If any criterion award,
   partial-credit value, or mark scope is unresolved, return null and needs_review.
+  Aggregate distinct supported step awards within a criterion into one component
+  with all relevant evidence. Account for every criterion; do not fill unmarked
+  criteria with zero just to complete the list. Prefer an unambiguous explicit
+  total or numeric component sum when available; do not count marks again.
 
 An explicit deduction can establish a total only when the teacher's notation
 unambiguously defines the starting award and deduction; explain the arithmetic

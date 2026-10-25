@@ -16,7 +16,7 @@ from app.pipeline.dataset.metadata import load_metadata
 from app.pipeline.dataset.scoring import rubric_context
 import json
 
-OCR_VERSION = 3
+OCR_VERSION = 4
 
 
 def find_pdfs(raw_dir: Path) -> list[Path]:
