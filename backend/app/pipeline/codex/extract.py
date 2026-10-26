@@ -141,17 +141,21 @@ First-page score-table cross-check:
 - Preserve the table award separately in first_page_score (defined below),
   including its literal notation and page-1 row evidence. Do not use the table
   award as a local component or repeat it under every subpart or later page.
-  Keep Raw score for the independent question-page numeric observations;
-  describe the table cross-check in Marks and the consolidated decision.
+  Preserve the table cell and independent local numeric observations in Raw score
+  with their page and scope identified; describe the comparison in Marks and the
+  consolidated decision. Never add the table total to the local awards.
 - Recheck the table total against all distinct local numeric awards and supported
   grading marks for that parent question across every supplied page. A table
   total and its matching local awards are corroboration, not additive points.
-  Explain the cross-check in reasoning. Establish the question award independently
-  from local totals, numeric subpart awards, or rubric-supported marks before
-  comparing it with the table; do not copy the table value as both observations.
-  Missing independent question-award evidence, conflicting totals, uncertain row association,
-  ambiguous cell readings, or out-of-range totals require needs_review and a null
-  expected_score. Preserve both sides of a conflict; never silently overwrite one.
+  Explain the cross-check in reasoning. When possible, establish an independent
+  question award from local totals, numeric subpart awards, or rubric-supported
+  marks and compare it with the table; do not copy the table value as both
+  observations. A clear table cell is itself an explicit teacher award and can
+  populate expected_score even when independent local evidence is absent or
+  incomplete. Record that limitation in question_score without inventing a local
+  award. Conflicting supported totals, uncertain row association, ambiguous table
+  cells, or out-of-range totals require needs_review and expected_score null.
+  Preserve both sides of a conflict; never silently overwrite one.
 - A parent table total does not establish individual subpart awards. If the rubric
   maps only 2.1, 2.2, and 2.3, retain row 2 as parent-question evidence without
   fabricating a mapped parent ID, distributing 6 among subparts, or assigning
@@ -195,18 +199,28 @@ line (no code fence). For a question spanning pages, put its consolidated decisi
 only in its last section; never add page subtotals as separate question scores.
 The object must have these keys:
 question_id, rubric_sha256, status, expected_score, max_score, basis, evidence,
-reasoning, components, first_page_score.
+reasoning, components, first_page_score, question_score.
 first_page_score is an object with status (extracted, not_visible, or needs_review),
 page (1), row (the parent question number 1 through 13, or null if unknown),
 raw_score (literal earned-score cell text or null), score (JSON number or null),
 and evidence (string citing original page 1, row, visible label, and cell text).
-Keep this table observation separate from the independently established question
-award in expected_score and components. Sum distinct subpart awards only within
+question_score is an object with status (extracted, not_visible, or needs_review),
+score (JSON number or null), and evidence (string citing independent local awards
+and their attempt pages, or explaining why a complete local total is unavailable).
+Keep it separate from first_page_score. Sum distinct subpart awards only within
 one mapped parent question; never add the parent table total to that sum.
+For a clear mapped table award, use basis first_page_table, components [], and
+expected_score equal to first_page_score.score. If independent local awards are
+missing/incomplete, leave question_score.score null and set its status to
+not_visible or needs_review; the table award still has status extracted. Do not
+null a clear table award solely because local marks are missing or faint.
 For example, independent subpart awards 2, 1.5, and 2.5 establish question 2's
 award of 6; compare against row 2's observed score. If both are 6, expected_score
-is 6. If they differ, or either award/association is unclear or missing, return
-needs_review and expected_score null, preserving both observations in evidence.
+is 6. If the table clearly says 6 but a complete local total is unavailable,
+expected_score is still 6 and question_score explains the missing comparison.
+If supported totals differ, or the table cell/association is unclear, return
+needs_review and expected_score null. Do not use a partial local sum as a
+conflicting complete question total. Preserve both observations in evidence.
 Do not substitute this example's numbers for actual observations.
 Copy question_id and rubric_sha256 exactly from the matching rubric entry.
 status is extracted or needs_review. expected_score and max_score are JSON numbers
@@ -216,6 +230,10 @@ components is an array of objects with criterion_id (string or null), points
 (number), and evidence (string identifying the distinct annotation and page).
 
 Choose basis:
+- first_page_table: a clear earned-score cell in the first-page table, mapped to
+  its parent question. Use its value as expected_score, components [], and keep
+  the independent question-score comparison in question_score. Missing independent
+  local evidence does not invalidate a clear table award; genuine conflicts do.
 - explicit_total: an unambiguous teacher-written total, such as 3 or 3/5. For
   earned/max notation use earned points, not the ratio. components is empty.
 - sum_awards: explicit teacher component awards such as 2+2. List each distinct
@@ -243,8 +261,11 @@ under explicit_total. Do not assume every absent criterion was awarded full cred
 Do not distribute a parent total among subparts or infer missing subpart totals.
 Keep 0 as a valid explicit award. Check 0 <= expected_score <= rubric_max_score.
 The supplied rubric maximum must exist. Unmapped questions, missing rubrics,
-unclear annotations, conflicting evidence, and out-of-range totals require
-status needs_review and expected_score null, with a reason. Use basis unresolved
+unclear table awards/associations, conflicting supported totals, and out-of-range
+awards require status needs_review and expected_score null, with a reason.
+For first_page_table, unclear local marks alone do not invalidate a clear table
+award: retain expected_score and describe the unavailable comparison in
+question_score with not_visible or needs_review. Use basis unresolved
 when no supported basis is available. Do not clamp or repair a teacher score.
 Successful interpretation is extracted, never human-verified. Do not place score
 calculations in raw observations or student text.

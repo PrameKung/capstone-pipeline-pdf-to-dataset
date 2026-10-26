@@ -378,15 +378,20 @@ null score and review.
 The teacher prompt also cross-checks the visible first-page 13-row score table:
 row N is the earned total for parent question N, including its subparts. The
 `Score decision` keeps this observation in `first_page_score` (status, page, row,
-raw_score, score, evidence), separate from the independent question-page award.
-The backend validates the parent label/row mapping and compares the table score
-with the validated question total. Matching scores fill a blank `expected_score`;
-conflicting, absent, or unclear table evidence leaves the derived score blank
-and requests review. For example, local subpart awards 2 + 1.5 + 2.5 and a row-2
+raw_score, score, evidence), separate from `question_score` (status, score,
+evidence) for independent local grading. The backend validates the parent
+label/row mapping. A clear table award uses `first_page_table` and fills a blank
+`expected_score`, even if local marks do not establish a complete independent
+total; that missing comparison is flagged for review without discarding the
+recorded table score. When a complete local award is available, it must match.
+Conflicting totals or absent/unclear table evidence leave the derived score blank
+and request review. For example, local subpart awards 2 + 1.5 + 2.5 and a row-2
 score of 6 establish question 2's `expected_score` of 6. Parent totals are never
 divided into invented subpart scores or added to local awards. Censored table
-content stays unavailable. Existing decisions lacking `first_page_score` require
-new teacher extraction. OCR and export cache versions are updated; PDF-only
+content stays unavailable. Existing decisions lacking `first_page_score` or the new `question_score`
+comparison require new teacher extraction. Deleting `.pipeline/` removes the OCR
+observations needed for export-only recovery; existing CSVs alone cannot recover
+teacher marks or table values. OCR and export cache versions are updated; PDF-only
 preparation remains offline and does not invoke extraction.
 
 The grading prompt recognizes red checks, vertical/rising strokes, and checks

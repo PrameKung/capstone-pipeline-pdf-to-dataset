@@ -13,7 +13,7 @@ from app.pipeline.dataset.records import _sha256, build_job_records
 from app.pipeline.dataset.schema import CSV_COLUMNS
 from app.pipeline.dataset.metadata import load_metadata
 
-EXPORT_VERSION = 3
+EXPORT_VERSION = 4
 
 
 def atomic_json(path: Path, value: dict) -> None:
@@ -112,6 +112,8 @@ def export_job(source: Path, raw_dir: Path, state_dir: Path, output_dir: Path,
         os.replace(name, destination)
     finally:
         Path(name).unlink(missing_ok=True)
+    scored = sum(record["row"]["expected_score"] != "" for record in result["records"])
     print(f"Exported {relative.with_suffix('.csv').as_posix()} "
-          f"({len(result['records'])} rows; {result['validation']['counts']['needs_review']} need review)", flush=True)
+          f"({len(result['records'])} rows; {scored} expected scores; "
+          f"{result['validation']['counts']['needs_review']} need review)", flush=True)
     return True

@@ -83,8 +83,11 @@ Keep unmapped responses with a blank `question_id` and a stable `response_id`; t
 Teacher-derived `expected_score` additionally requires a structured
 `first_page_score` observation in the teacher decision. Original page 1, row N
 must map to parent question N (1 through 13), with literal cell notation and
-evidence. The numeric table score must equal the independently supported
-question award, including any distinct subpart sum. Missing or conflicting
-observations withhold the derived score and request review. A parent total is
+evidence. For basis `first_page_table`, a clear table score fills `expected_score`.
+The separate `question_score` observation records an independent complete local
+award when available; it must match the table. Missing/incomplete local evidence
+adds a review note without discarding a clear table award. Conflicting complete
+totals or missing/unclear table evidence withhold the derived score and request
+review. A parent total is
 never copied into individual subpart rows. Explicit response metadata retains
 its existing precedence; this comparison does not establish human verification.
