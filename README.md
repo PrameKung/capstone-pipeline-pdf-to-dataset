@@ -1,6 +1,25 @@
 # Local PDF Pipeline
 
-This testing branch recursively finds PDFs under `raw/`, removes page 1 from each working copy, and runs Codex OCR. Each job folder under `.pipeline/jobs/` contains `pages-without-first.pdf`, the separate `student-response.md` and `grading-response.md`, and combined `ocr.md`. The worker validates dataset records and exports one CSV per PDF under the matching `output/` subfolder.
+To run only local PDF preparation with dependencies already installed:
+
+```sh
+make pipeline-prepare
+```
+
+This recursively censors PDFs from `raw/` into
+`.pipeline/jobs/<relative-path-without-extension>/pages-redacted.pdf`.
+It preserves sources and page numbering, skips rendering, Codex, and CSV export,
+and uses offline execution. `RAW_DIR`, `PIPELINE_DATA_DIR`, and
+`PIPELINE_WORKERS` configure roots and capacity. Preparation replaces that PDF's
+job artifacts and invalidates any previous OCR; existing CSV exports stay intact.
+Unchanged successful preparations are cached. The equivalent backend command is
+`sh ../scripts/backend-runtime.sh uv run --offline --locked --no-sync python -m app.pipeline.jobs.worker --once --prepare-only` (run from `backend/`).
+
+On NixOS, the Make commands use the active GCC installation to locate
+`libstdc++.so.6` for PyMuPDF. Keep `gcc` on `PATH`; no package downloads are
+needed. The runtime wrapper preserves existing `LD_LIBRARY_PATH` entries.
+
+This testing branch recursively finds PDFs under `raw/`, permanently censors the top half of page 1 in each working copy, and runs Codex OCR. Each job folder under `.pipeline/jobs/` contains `pages-redacted.pdf`, the separate `student-response.md` and `grading-response.md`, and combined `ocr.md`. The worker validates dataset records and exports one CSV per PDF under the matching `output/` subfolder.
 
 ## Run with Docker
 
@@ -108,7 +127,7 @@ Missing grading, unclear content, repeated grading sections, and distinct raw
 scores produce review notes. The parser retains teacher score decisions separately; the record builder validates them before export.
 
 The parser expects `## Page N` and `### Question LABEL` headings from the current
-OCR prompts. It rejects page 1, non-increasing page numbers, and malformed headings
+OCR prompts. It rejects invalid or non-increasing page numbers, and malformed headings
 with `MarkdownFormatError`. Unlabeled page content is retained for review. Only
 boundary blank lines are trimmed. Cross-page grouping assumes repeated exact
 labels refer to the same question within a PDF; it cannot resolve reused question

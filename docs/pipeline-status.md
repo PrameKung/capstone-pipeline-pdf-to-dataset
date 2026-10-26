@@ -3,7 +3,7 @@
 ## Implemented
 
 - Recursive PDF discovery, concurrent local workers, and shared job locks.
-- Prepared PDFs excluding page 1; source files remain unchanged.
+- Prepared PDFs with the top half of page 1 redacted; source files remain unchanged.
 - Separate student/grading OCR Markdown passes through Codex CLI.
 - Markdown parsing, cross-page grouping, and conservative question matching.
 - Exact 36-column record building with supplied metadata, stable IDs for unchanged

@@ -1,10 +1,11 @@
-.PHONY: help backend-sync backend-run pipeline-once pipeline-export docker-build docker-up docker-down docker-workers docker-logs
+.PHONY: help backend-sync backend-run pipeline-once pipeline-prepare pipeline-export docker-build docker-up docker-down docker-workers docker-logs
 
 help:
 	@printf '%s\n' \
 	  'backend-sync  Install backend dependencies from uv.lock' \
 	  'backend-run   Run the backend locally on 127.0.0.1:8000' \
 	  'pipeline-once Process current PDFs once using the local worker pool' \
+	  'pipeline-prepare Censor PDFs only, offline (no OCR or CSV export)' \
 	  'pipeline-export Export existing OCR Markdown without rerunning Codex' \
 	  'docker-build  Build the backend image' \
 	  'docker-up     Build and start backend and worker containers' \
@@ -16,13 +17,16 @@ backend-sync:
 	cd backend && uv sync --locked
 
 backend-run:
-	cd backend && uv run --locked uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+	cd backend && sh ../scripts/backend-runtime.sh uv run --locked uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
 pipeline-once:
-	cd backend && uv run --locked python -m app.pipeline.jobs.worker --once --workers "$${PIPELINE_WORKERS:-2}"
+	cd backend && sh ../scripts/backend-runtime.sh uv run --locked python -m app.pipeline.jobs.worker --once --workers "$${PIPELINE_WORKERS:-2}"
+
+pipeline-prepare:
+	cd backend && sh ../scripts/backend-runtime.sh uv run --offline --locked --no-sync python -m app.pipeline.jobs.worker --once --prepare-only --workers "$${PIPELINE_WORKERS:-2}"
 
 pipeline-export:
-	cd backend && uv run --locked python -m app.pipeline.jobs.worker --once --export-only --workers "$${PIPELINE_WORKERS:-2}"
+	cd backend && sh ../scripts/backend-runtime.sh uv run --locked python -m app.pipeline.jobs.worker --once --export-only --workers "$${PIPELINE_WORKERS:-2}"
 
 docker-build:
 	docker compose build

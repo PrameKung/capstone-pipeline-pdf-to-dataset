@@ -31,7 +31,8 @@ def _claim_key(raw_dir: Path, pdf_path: Path) -> str:
 
 def process_pdf(raw_dir: Path, state_dir: Path, pdf_path: Path, *,
                 output_dir: Path = Path("../output"), export_only: bool = False,
-                metadata_dir: Path | None = None, question_template: Path | None = None) -> bool:
+                metadata_dir: Path | None = None, question_template: Path | None = None,
+                prepare_only: bool = False) -> bool:
     """Serialize OCR and export for a source; OS releases locks after crashes."""
     raw_dir, state_dir, output_dir = raw_dir.resolve(), state_dir.resolve(), output_dir.resolve()
     if any(a == b or a.is_relative_to(b) or b.is_relative_to(a)
@@ -53,6 +54,23 @@ def process_pdf(raw_dir: Path, state_dir: Path, pdf_path: Path, *,
         failure_path = claims / f"{key}.failure.json"
         try:
             job = state_dir / "jobs" / relative.with_suffix("")
+            if prepare_only:
+                from app.pipeline.pdf.preprocess import PREPROCESS_VERSION, prepare_pdf_with_redacted_header
+                prepared = job / "pages-redacted.pdf"
+                prep_manifest_path = claims / f"{key}.preparation.json"
+                inputs = {"source_sha256": _sha256(pdf_path), "preprocess_version": PREPROCESS_VERSION}
+                if prepared.is_file() and read_json(prep_manifest_path) == inputs:
+                    print(f"Prepared (cached): {relative.as_posix()}", flush=True)
+                    return False
+                # Preparation replaces the job folder; invalidate existing OCR first.
+                atomic_json(claims / f"{key}.extraction.json", {**inputs, "complete": False})
+                prepare_pdf_with_redacted_header(pdf_path, job)
+                if _sha256(pdf_path) != inputs["source_sha256"]:
+                    raise ValueError("Source changed during preparation; retry")
+                atomic_json(prep_manifest_path, inputs)
+                failure_path.unlink(missing_ok=True)
+                print(f"Prepared: {relative.as_posix()}", flush=True)
+                return True
             manifest_path = claims / f"{key}.extraction.json"
             manifest = read_json(manifest_path)
             source_sha = _sha256(pdf_path)
@@ -70,7 +88,7 @@ def process_pdf(raw_dir: Path, state_dir: Path, pdf_path: Path, *,
             else:
                 # Lazy imports keep existing-Markdown export independent of PDF/CLI libraries.
                 from app.pipeline.codex.extract import DEFAULT_EFFORT, DEFAULT_MODEL, extract_pdf
-                from app.pipeline.pdf.preprocess import PREPROCESS_VERSION, prepare_pdf_without_first_page
+                from app.pipeline.pdf.preprocess import PREPROCESS_VERSION, prepare_pdf_with_redacted_header
                 config = {"student_model": os.environ.get("PIPELINE_CODEX_MODEL", DEFAULT_MODEL),
                           "student_effort": os.environ.get("PIPELINE_CODEX_EFFORT", DEFAULT_EFFORT),
                           "grading_model": os.environ.get("PIPELINE_CODEX_MODEL", DEFAULT_MODEL),
@@ -80,10 +98,10 @@ def process_pdf(raw_dir: Path, state_dir: Path, pdf_path: Path, *,
                           "ocr_version": OCR_VERSION, "config": config, "rubric_sha256": rubric_sha}
                 same_inputs = all(manifest.get(k) == v for k, v in inputs.items())
                 complete_files = all((job / name).is_file() for name in
-                                     ("pages-without-first.pdf", "student-response.md", "grading-response.md", "ocr.md"))
+                                     ("pages-redacted.pdf", "student-response.md", "grading-response.md", "ocr.md"))
                 if not same_inputs or not manifest.get("complete") or not complete_files:
                     atomic_json(manifest_path, {**inputs, "complete": False})
-                    prepared = prepare_pdf_without_first_page(pdf_path, job)
+                    prepared = prepare_pdf_with_redacted_header(pdf_path, job)
                     extract_pdf(prepared, job / "ocr.md", state_dir, questions=questions)
                     if _sha256(pdf_path) != source_sha:
                         raise ValueError("Source changed during extraction; retry")
@@ -102,7 +120,8 @@ def process_pdf(raw_dir: Path, state_dir: Path, pdf_path: Path, *,
 
 def run_worker(raw_dir: Path, state_dir: Path, workers: int, poll_seconds: float, once: bool,
                *, output_dir: Path = Path("../output"), export_only: bool = False,
-               metadata_dir: Path | None = None, question_template: Path | None = None) -> int:
+               metadata_dir: Path | None = None, question_template: Path | None = None,
+               prepare_only: bool = False) -> int:
     if workers < 1 or poll_seconds <= 0:
         raise ValueError("workers and poll_seconds must be positive")
     raw_dir, state_dir = raw_dir.resolve(), state_dir.resolve()
@@ -127,7 +146,7 @@ def run_worker(raw_dir: Path, state_dir: Path, workers: int, poll_seconds: float
                         return False
                     process_pdf(raw_dir, state_dir, path, output_dir=output_dir,
                                 export_only=export_only, metadata_dir=metadata_dir,
-                                question_template=question_template)
+                                question_template=question_template, prepare_only=prepare_only)
                     failed_inputs.pop(path, None)
                     return True
                 except Exception as exc:
@@ -148,14 +167,16 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=Path(os.environ.get("OUTPUT_DIR", "../output")))
     parser.add_argument("--metadata-dir", type=Path, default=Path(os.environ["PIPELINE_METADATA_DIR"]) if os.environ.get("PIPELINE_METADATA_DIR") else None)
     parser.add_argument("--question-template", type=Path, default=Path(os.environ["PIPELINE_QUESTION_TEMPLATE"]) if os.environ.get("PIPELINE_QUESTION_TEMPLATE") else None)
-    parser.add_argument("--export-only", action="store_true", help="Export existing Markdown without running OCR")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--prepare-only", action="store_true", help="Only censor PDFs locally; no rendering, OCR, or CSV export")
+    mode.add_argument("--export-only", action="store_true", help="Export existing Markdown without running OCR")
     parser.add_argument("--workers", type=int, default=int(os.environ.get("PIPELINE_WORKERS", "2")))
     parser.add_argument("--poll-seconds", type=float, default=float(os.environ.get("PIPELINE_POLL_SECONDS", "5")))
     parser.add_argument("--once", action="store_true", help="Process current PDFs, then exit")
     args = parser.parse_args()
     failed = run_worker(args.raw_dir, args.state_dir, args.workers, args.poll_seconds, args.once,
                         output_dir=args.output_dir, export_only=args.export_only, metadata_dir=args.metadata_dir,
-                        question_template=args.question_template)
+                        question_template=args.question_template, prepare_only=args.prepare_only)
     if failed:
         raise SystemExit(f"{failed} PDF job(s) failed; inspect worker logs and .pipeline/claims/*.failure.json.")
 

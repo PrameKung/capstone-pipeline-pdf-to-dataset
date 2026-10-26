@@ -11,7 +11,7 @@ Recreate the PDF-to-dataset pipeline from `~/Documents/capstone/capstone-storage
 - Write one final CSV per input PDF under `output/`, preserving its relative folders and filename. For example, `raw/signal/318/1.pdf` produces `output/signal/318/1.csv`.
 - Use the fixed CSV header and field meanings in `docs/csv-output-format.md`; output one row per question response and keep extracted scores separate from human-verified scores.
 - Keep originals unchanged. Store the prepared PDF and worker state under `.pipeline/`, not in `output/`. The output folder contains CSV files only.
-- Exclude the first PDF page, which contains student credentials, from rendering, extraction, review artifacts, and CSV output. Keep the source PDF unchanged and retain original page numbers for all processed pages.
+- Permanently redact the top half of the first PDF page in the working copy before rendering or extraction. Exclude censored content from review artifacts and CSV output. Keep the source PDF unchanged and retain original page numbers for all processed pages.
 - Use `.pipeline/` as the default worker-state and artifact directory. This branch writes only the prepared PDF in each job folder. Docker worker replicas must share `.pipeline/` through a local volume.
 - On reruns, replace a CSV only after the new run succeeds and validates; a failed run leaves the last successful CSV intact.
 - Treat one PDF as one attempt. Keep anonymous attempt and response IDs stable across reruns; include unmapped answers with a blank question ID and `needs_review` status.
@@ -22,7 +22,7 @@ Recreate the PDF-to-dataset pipeline from `~/Documents/capstone/capstone-storage
 ## Pipeline requirements
 
 - Process graded scanned PDFs into question-level student answers and separate teacher grading records.
-- Prepare a working PDF without page 1. Do not render pages or create student views in this branch. Never reconstruct hidden handwriting or guess unclear content.
+- Prepare a working PDF retaining all pages with the top half of page 1 permanently redacted. Do not render pages or create student views in this branch. Never reconstruct hidden handwriting or guess unclear content.
 - Transcribe student work faithfully, including incorrect or incomplete math. Do not solve, correct, or include teacher scores, feedback, or marks in student-answer inputs.
 - Transcribe grading marks without regrading. Preserve raw score notation; use a null score and request review when meaning or question association is unclear.
 - Keep provenance from each record to its source file, pages, run, and extraction configuration. Successfully parsed output is not human-verified ground truth.

@@ -99,8 +99,8 @@ def parse_markdown(text: str, kind: Literal["student", "grading"]) -> list[Secti
         if page_match:
             flush()
             next_page = int(page_match[1])
-            if next_page < 2 or (page is not None and next_page <= page):
-                raise MarkdownFormatError(f"Invalid original page order at line {line_number}; pages must increase from 2 or later")
+            if next_page < 1 or (page is not None and next_page <= page):
+                raise MarkdownFormatError(f"Invalid original page order at line {line_number}; pages must increase from 1 or later")
             page, label, lines, has_question = next_page, None, [], False
         elif question_match:
             if page is None:

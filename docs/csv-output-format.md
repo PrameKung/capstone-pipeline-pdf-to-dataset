@@ -4,7 +4,7 @@ Write one CSV per input PDF under `output/`, mirroring the folders below `raw/` 
 
 The output folder contains CSV files only. Store images, manifests, job state, and other intermediate files in the local work area, outside `output/`.
 
-Exclude the first page of each PDF because it contains student credentials. Do not create records from that page. Retain original 1-based PDF page numbering in internal provenance; the first eligible page is page 2.
+Permanently redact the top half of the first page of each working PDF to censor student credentials. Do not create records from the censored region or guess hidden content. Retain original 1-based PDF page numbering in internal provenance; the visible bottom half of page 1 is eligible.
 
 Treat each PDF as one attempt. Persist its anonymous `attempt_id` and each `response_id` in `.pipeline/` so IDs remain stable across reruns. A changed source PDF receives a new attempt ID. A rerun replaces the existing CSV only after successful processing and validation; a failed or cancelled run leaves the previous CSV intact.
 
