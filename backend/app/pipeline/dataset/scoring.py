@@ -24,6 +24,28 @@ def rubric_context(question: dict) -> dict:
     return {**context, "rubric_sha256": hashlib.sha256(encoded.encode()).hexdigest()}
 
 
+def _first_page_comparison(response, decision: dict, score: Decimal) -> list[str]:
+    """Compare independently extracted question awards with the page-1 table."""
+    table = decision.get("first_page_score")
+    if not isinstance(table, dict) or table.get("status") != "extracted":
+        return ["First-page table score is missing or unclear; score requires review"]
+    label = response.question_label
+    if not isinstance(label, str) or label not in {str(n) for n in range(1, 14)}:
+        return ["First-page table totals require a mapped parent question 1 through 13; do not allocate to subparts"]
+    if (type(table.get("page")) is not int or table["page"] != 1
+            or type(table.get("row")) is not int or table["row"] != int(label)):
+        return ["First-page table row does not match the question; score requires review"]
+    for key in ("raw_score", "evidence"):
+        if not isinstance(table.get(key), str) or not table[key].strip():
+            return ["First-page table score lacks raw notation or evidence; score requires review"]
+    table_score = number(table.get("score"))
+    if (type(table.get("score")) not in (int, float) or table_score is None or table_score < 0):
+        return ["First-page table score is invalid; score requires review"]
+    if table_score != score:
+        return [f"Question award {score} conflicts with first-page table award {table_score}; score withheld"]
+    return []
+
+
 def teacher_score(response, row: dict):
     """Return (score string or None, notes). Preserve model decisions separately."""
     decisions = [g.score_decision for g in response.grading if g.score_decision is not None]
@@ -100,4 +122,7 @@ def teacher_score(response, row: dict):
             return None, ["Teacher score components do not sum to the final score"]
         if basis == "rubric_marks" and seen != set(by_id):
             return None, ["Teacher marks do not account for every rubric criterion; score withheld"]
+    comparison_notes = _first_page_comparison(response, d, score)
+    if comparison_notes:
+        return None, comparison_notes
     return str(score), []

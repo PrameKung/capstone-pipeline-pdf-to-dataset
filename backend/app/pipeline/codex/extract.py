@@ -104,6 +104,45 @@ interpret an isolated check as full credit or an isolated cross as zero without
 an unambiguous criterion association and a rubric policy supporting the award.
 No marks is missing evidence, not zero. Do not infer credit from unmarked work.
 
+First-page score-table cross-check:
+- Before finalizing any score, inspect the visible, uncensored portion of original
+  page 1 for the teacher's 13-row question-score table. Each question row records
+  the student's earned total for that parent problem: row 1 maps to question 1,
+  row 2 to question 2, and so on through row 13. Count question rows only, excluding
+  column headers and any overall-total row. Use visible row labels/layout to
+  confirm alignment; if rows are hidden, missing, or unclear, do not shift the
+  remaining row numbers or guess the association. Never reconstruct censored ink.
+- For example, row 1 containing 3.5 means question 1 earned 3.5 points; row 2
+  containing 6 means question 2 earned 6 points in total, potentially across
+  2.1, 2.2, and 2.3. These examples explain the mapping, not scores to copy.
+  Read the earned-score cell, not a printed maximum, question number, or overall
+  exam total. Preserve literal decimals, fractions, corrections, and zero;
+  a blank or unreadable cell is missing evidence, never zero.
+- Preserve the table award separately in first_page_score (defined below),
+  including its literal notation and page-1 row evidence. Do not use the table
+  award as a local component or repeat it under every subpart or later page.
+  Keep Raw score for the independent question-page numeric observations;
+  describe the table cross-check in Marks and the consolidated decision.
+- Recheck the table total against all distinct local numeric awards and supported
+  grading marks for that parent question across every supplied page. A table
+  total and its matching local awards are corroboration, not additive points.
+  Explain the cross-check in reasoning. Establish the question award independently
+  from local totals, numeric subpart awards, or rubric-supported marks before
+  comparing it with the table; do not copy the table value as both observations.
+  Missing independent question-award evidence, conflicting totals, uncertain row association,
+  ambiguous cell readings, or out-of-range totals require needs_review and a null
+  expected_score. Preserve both sides of a conflict; never silently overwrite one.
+- A parent table total does not establish individual subpart awards. If the rubric
+  maps only 2.1, 2.2, and 2.3, retain row 2 as parent-question evidence without
+  fabricating a mapped parent ID, distributing 6 among subparts, or assigning
+  6 to each subpart. Use independently visible subpart awards for subpart decisions;
+  unresolved subpart scores remain null and needs_review. Do not invent rubric IDs.
+- If the table is absent or not visible after redaction, say so in the decision's
+  reasoning, retain other visible grading evidence, and set needs_review with
+  expected_score null because the comparison is unavailable. Never access the
+  original uncensored PDF to recover the table. Keep the
+  consolidated Score decision only in the question's last section as required below.
+
 Red-mark reading convention calibrated against corrected samples:
 - Look carefully for a red check/tick, a single vertical or rising red stroke,
   and a check missing its tiny short arm/head (ไม่มีหัว). These can be the
@@ -136,7 +175,19 @@ line (no code fence). For a question spanning pages, put its consolidated decisi
 only in its last section; never add page subtotals as separate question scores.
 The object must have these keys:
 question_id, rubric_sha256, status, expected_score, max_score, basis, evidence,
-reasoning, components.
+reasoning, components, first_page_score.
+first_page_score is an object with status (extracted, not_visible, or needs_review),
+page (1), row (the parent question number 1 through 13, or null if unknown),
+raw_score (literal earned-score cell text or null), score (JSON number or null),
+and evidence (string citing original page 1, row, visible label, and cell text).
+Keep this table observation separate from the independently established question
+award in expected_score and components. Sum distinct subpart awards only within
+one mapped parent question; never add the parent table total to that sum.
+For example, independent subpart awards 2, 1.5, and 2.5 establish question 2's
+award of 6; compare against row 2's observed score. If both are 6, expected_score
+is 6. If they differ, or either award/association is unclear or missing, return
+needs_review and expected_score null, preserving both observations in evidence.
+Do not substitute this example's numbers for actual observations.
 Copy question_id and rubric_sha256 exactly from the matching rubric entry.
 status is extracted or needs_review. expected_score and max_score are JSON numbers
 or null. evidence cites literal teacher annotations and original page numbers;

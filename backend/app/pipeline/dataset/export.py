@@ -13,7 +13,7 @@ from app.pipeline.dataset.records import _sha256, build_job_records
 from app.pipeline.dataset.schema import CSV_COLUMNS
 from app.pipeline.dataset.metadata import load_metadata
 
-EXPORT_VERSION = 2
+EXPORT_VERSION = 3
 
 
 def atomic_json(path: Path, value: dict) -> None:

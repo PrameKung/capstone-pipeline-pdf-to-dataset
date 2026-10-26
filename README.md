@@ -340,6 +340,20 @@ zero. Partial-credit alternatives are not summed, and parent totals are not
 allocated to subparts. Unclear associations or conflicting evidence require a
 null score and review.
 
+The teacher prompt also cross-checks the visible first-page 13-row score table:
+row N is the earned total for parent question N, including its subparts. The
+`Score decision` keeps this observation in `first_page_score` (status, page, row,
+raw_score, score, evidence), separate from the independent question-page award.
+The backend validates the parent label/row mapping and compares the table score
+with the validated question total. Matching scores fill a blank `expected_score`;
+conflicting, absent, or unclear table evidence leaves the derived score blank
+and requests review. For example, local subpart awards 2 + 1.5 + 2.5 and a row-2
+score of 6 establish question 2's `expected_score` of 6. Parent totals are never
+divided into invented subpart scores or added to local awards. Censored table
+content stays unavailable. Existing decisions lacking `first_page_score` require
+new teacher extraction. OCR and export cache versions are updated; PDF-only
+preparation remains offline and does not invoke extraction.
+
 The grading prompt recognizes red checks, vertical/rising strokes, and checks
 missing their short arm/head (ไม่มีหัว) as possible positive marks, usually worth
 one point on a one-point step. It rechecks scope and rubric weights: a check on
