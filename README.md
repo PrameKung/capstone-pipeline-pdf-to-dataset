@@ -21,6 +21,41 @@ needed. The runtime wrapper preserves existing `LD_LIBRARY_PATH` entries.
 
 This testing branch recursively finds PDFs under `raw/`, permanently censors the top half of page 1 in each working copy, and runs Codex OCR. Each job folder under `.pipeline/jobs/` contains `pages-redacted.pdf`, the separate `student-response.md` and `grading-response.md`, and combined `ocr.md`. The worker validates dataset records and exports one CSV per PDF under the matching `output/` subfolder.
 
+## Question reference and scratch work
+
+Place a clean question paper at `raw/question/question.pdf`. The worker uses it
+when present and reserves folders named `question/` at any depth for reference
+material, excluding those folders from attempt preparation, OCR jobs, and CSV export. For another path,
+use `--question-pdf /path/to/question.pdf` from `backend/`, or set
+`PIPELINE_QUESTION_PDF` (Docker paths must be inside a mounted folder). An explicit
+missing reference fails clearly; without a default or configured reference,
+attempt processing continues without reference context. Use a question paper
+without student work, teacher grading, credentials, or worked solutions.
+
+For `raw/signal/question/question.pdf`, set Docker's `.env` to
+`PIPELINE_QUESTION_PDF=/data/raw/signal/question/question.pdf`. For a local worker
+started from `backend/`, use `--question-pdf ../raw/signal/question/question.pdf`.
+
+On a normal extraction run, each isolated pass receives clearly identified
+question-reference images followed by the redacted attempt pages. Reference pages
+help match question labels, subparts, and tasks; they do not generate responses,
+provide earned-score evidence, or change attempt page numbering. Rubrics and
+teacher score decisions remain exclusive to the grading pass. This context does
+not resolve the existing graded-image isolation limitation described below.
+
+Preserve calculations relevant to a question, including rough, crossed-out,
+incorrect, and incomplete work. Exclude only scratch work clearly unrelated to
+all questions. Preserve uncertain associations under `Question unknown` with an
+`[unclear]` note for review. Do not solve or complete answers from the reference.
+These are extraction instructions, not a guarantee of visual accuracy.
+
+The reference path and SHA-256 are recorded in extraction configuration and
+manifests. Changes invalidate extraction caches; export-only mode rejects a
+changed reference until extraction is refreshed. `make pipeline-prepare` remains
+offline, excludes reference PDFs, and does not render or extract the question
+paper. This branch's no-rendering restriction means reference-assisted extraction
+is configured here but is not run as part of PDF preparation.
+
 ## Run with Docker
 
 ```sh
