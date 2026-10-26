@@ -43,11 +43,40 @@ provide earned-score evidence, or change attempt page numbering. Rubrics and
 teacher score decisions remain exclusive to the grading pass. This context does
 not resolve the existing graded-image isolation limitation described below.
 
-Preserve calculations relevant to a question, including rough, crossed-out,
+The student pass preserves calculations relevant to a question, including rough, crossed-out,
 incorrect, and incomplete work. Exclude only scratch work clearly unrelated to
 all questions. Preserve uncertain associations under `Question unknown` with an
 `[unclear]` note for review. Do not solve or complete answers from the reference.
 These are extraction instructions, not a guarantee of visual accuracy.
+
+The grading pass records only red teacher marks, raw scores, and feedback. It
+uses the visible first-page table for parent scores and reconciles local teacher
+awards against it using the rubric. Student equations and scratch work belong
+only in `student-response.md`; grading evidence locates marks by page, label,
+and position without reproducing student calculations. Existing grading Markdown
+must be regenerated with a normal extraction run to apply this scope correction;
+export-only mode cannot repair contaminated extraction text.
+
+Teacher-mark interpretation preserves literal evidence before calculating scores:
+
+| Observation | Handling |
+| --- | --- |
+| Clear first-page earned-score cell | Parent total; explicit zero is valid, a blank is missing evidence. |
+| Decimal or fraction | Partial award when readable; retain raw notation. |
+| `3/5` | Confirm earned/max versus fractional notation; request review if ambiguous. |
+| `2+1` or `0+0` | Sum explicit awards within their indicated scope. |
+| Check, headless tick, or single stroke | Determine scope and rubric-supported value; no automatic full credit. |
+| Cross | Rejection/error evidence; no automatic whole-question zero. |
+| Number beside work or circled number | Establish award versus subtotal; count the same award once. |
+| Canceled score and replacement | Preserve both; accept only an unambiguous final revision. |
+| Deduction | Requires an explicit starting award and scope; never assume full credit. |
+| Underline, arrow, circle around work, correction | Feedback/location evidence unless a scoring convention establishes points. |
+| Missing, unreadable, or uncertain mark association | Preserve evidence and request review; never guess. |
+| Complete local total conflicts with first-page total | Preserve both, withhold the final score, and request review. A partial local sum is not a complete conflicting total. |
+
+Local marks and the matching first-page total corroborate the same award; they
+are never added together. Student ink, including red student writing, is not
+teacher grading merely because of its color.
 
 The reference path and SHA-256 are recorded in extraction configuration and
 manifests. Changes invalidate extraction caches; export-only mode rejects a
