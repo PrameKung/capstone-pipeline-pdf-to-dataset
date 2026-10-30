@@ -8,16 +8,17 @@ import os
 import tempfile
 import uuid
 from collections import Counter
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
-from app.pipeline.dataset.markdown import match_markdown
+from app.pipeline.dataset.markdown import Response, match_markdown
 
-from app.pipeline.dataset.schema import CSV_COLUMNS, JSON_FIELDS, QUESTION_FIELDS, RESPONSE_FIELDS
+from app.pipeline.dataset.schema import CSV_COLUMNS, JSON_FIELDS, QUESTION_FIELDS, RESPONSE_FIELDS, TEMPLATE_FIELDS
 from app.pipeline.dataset.validation import validate_records
 from app.pipeline.dataset.scoring import teacher_score, number
+from app.pipeline.dataset.confidence import response_confidence
 
 
 def _sha256(path: Path) -> str:
@@ -50,6 +51,7 @@ def build_job_records(
     response_metadata: Mapping[str, Mapping[str, Any]] | None = None,
     extraction_config: Mapping[str, Any] | None = None,
     extraction_source_sha256: str | None = None,
+    template_layout: bool = False,
 ) -> dict[str, Any]:
     """Build and save a run using supplied metadata and checked teacher decisions.
 
@@ -86,15 +88,38 @@ def build_job_records(
     questions = questions or {}
     response_metadata = response_metadata or {}
     # Check supplied metadata even if an OCR label does not occur in this attempt.
-    question_values = {label: _metadata(values, QUESTION_FIELDS) for label, values in questions.items()}
+    question_values = {label: _metadata(values, TEMPLATE_FIELDS) for label, values in questions.items()}
     supplied_responses = {key: _metadata(values, RESPONSE_FIELDS) for key, values in response_metadata.items()}
     label_counts = Counter(response.question_label for response in matched.responses)
+    ordered_responses = [(response, False) for response in matched.responses]
+    if template_layout:
+        by_label = {response.question_label: response for response in matched.responses
+                    if label_counts[response.question_label] == 1}
+        ordered_responses = []
+        for label in question_values:
+            if label in by_label:
+                ordered_responses.append((by_label[label], False))
+            else:
+                # No student content or page association is invented for a slot.
+                grading = [g for g in matched.unmatched_grading
+                           if g.section.question_label == label and not label_counts[label]]
+                matched.unmatched_grading = [g for g in matched.unmatched_grading if g not in grading]
+                grading = [replace(g, review_notes=[note for note in g.review_notes if note !=
+                           "No unambiguous student response matches this question label"])
+                           for g in grading]
+                placeholder = Response(label, [], grading=grading, review_notes=[
+                    "Template row has no unambiguous student response; answer left blank",
+                ])
+                ordered_responses.append((placeholder, True))
+        ordered_responses.extend((response, False) for response in matched.responses
+                                 if response.question_label not in question_values
+                                 or label_counts[response.question_label] != 1)
     occurrences: Counter[str] = Counter()
     records = []
     used_labels = set()
-    for response in matched.responses:
+    for response, placeholder in ordered_responses:
         label = response.question_label
-        unique_label = label is not None and label_counts[label] == 1
+        unique_label = label is not None and (placeholder or label_counts[label] == 1)
         identity = json.dumps(
             ["label", label] if unique_label else ["section", label, response.source_pages],
             ensure_ascii=False, separators=(",", ":"),
@@ -114,9 +139,17 @@ def build_job_records(
         if not row["question_id"]:
             notes.append("No supplied question ID mapping; response remains unmapped")
         row.update(supplied_responses.get(response_id, {}))
+        if unique_label and label in question_values and TEMPLATE_FIELDS <= question_values[label].keys():
+            # A CSV sheet fixes every template cell, including intentional blanks.
+            # Attempt-specific overrides cannot replace it or supply earned scores.
+            row.update(question_values[label])
+            row["expected_score"] = ""
         row.update(response_id=response_id, attempt_id=attempt_id, answer_text=response.answer_text)
         extracted_score, score_notes = teacher_score(response, row)
         notes.extend(score_notes)
+        answer_confidence, score_confidence, confidence_notes = response_confidence(response, extracted_score)
+        row.update(answer_text_confidence=answer_confidence, expected_score_confidence=score_confidence)
+        notes.extend(confidence_notes)
         expected_source = "supplied_metadata" if row["expected_score"] != "" else None
         if extracted_score is not None:
             if row["expected_score"] == "":
@@ -124,11 +157,14 @@ def build_job_records(
                 expected_source = "teacher_score_decision"
             elif number(row["expected_score"]) != number(extracted_score):
                 notes.append("Supplied expected_score conflicts with the teacher-derived score; supplied value retained")
+                row["expected_score_confidence"] = ""
         records.append({
             "row": row,
             "internal": {
                 "question_label": label,
-                "source_pages": response.source_pages,
+                "template_placeholder": placeholder,
+                "source_pages": response.source_pages or list(dict.fromkeys(
+                    g.section.page for g in response.grading)),
                 "student_sections": [asdict(section) for section in response.sections],
                 "teacher_grading": [asdict(grading) for grading in response.grading],
                 "extracted_score": extracted_score,
@@ -153,6 +189,7 @@ def build_job_records(
         "extraction_config": dict(extraction_config or {}),
         "artifacts": artifacts,
         "metadata": {"questions": questions, "responses": response_metadata},
+        "template_layout": template_layout,
         "unused_question_labels": sorted(set(question_values) - used_labels),
         "review_notes": ([] if extraction_source_sha256 is not None else [
             "Existing OCR has no supplied source checksum; linkage to the current PDF is unverified",

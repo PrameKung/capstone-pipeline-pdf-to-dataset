@@ -8,9 +8,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from app.pipeline.dataset.confidence import confidence
+
 PAGE = re.compile(r"^## Page ([0-9]+)\s*$")
 QUESTION = re.compile(r"^### Question (.+?)\s*$")
 GRADING_FIELD = re.compile(r"^(Raw score|Marks|Feedback|Score decision):[ \t]*(.*)$")
+ANSWER_CONFIDENCE = re.compile(r"^<!-- answer_text_confidence:\s*(.*?)\s*-->\s*$")
 
 
 class MarkdownFormatError(ValueError):
@@ -23,6 +26,7 @@ class Section:
     question_label: str | None
     text: str
     review_notes: list[str] = field(default_factory=list)
+    answer_text_confidence: float | None = None
 
 
 @dataclass
@@ -86,21 +90,38 @@ def parse_markdown(text: str, kind: Literal["student", "grading"]) -> list[Secti
         if body.strip() == empty_marker and not has_question:
             return
         notes = []
+        answer_confidence = None
+        if kind == "student":
+            content, estimates = [], []
+            for line in body.splitlines():
+                match = ANSWER_CONFIDENCE.fullmatch(line)
+                if match:
+                    try:
+                        estimates.append(confidence(json.loads(match[1])))
+                    except (ValueError, TypeError):
+                        estimates.append(None)
+                else:
+                    content.append(line)
+            body = "\n".join(content).strip("\n")
+            if len(estimates) == 1 and estimates[0] is not None:
+                answer_confidence = estimates[0]
+            elif estimates:
+                notes.append("Invalid or repeated answer OCR confidence metadata")
         if label is None:
             notes.append("Question association is unknown")
         if not body.strip():
             notes.append("Empty question section")
         if "[unclear]" in body.lower():
             notes.append("OCR contains unclear content")
-        sections.append(Section(page, label, body, notes))
+        sections.append(Section(page, label, body, notes, answer_confidence))
 
     for line_number, line in enumerate(text.splitlines(), 1):
         page_match, question_match = PAGE.fullmatch(line), QUESTION.fullmatch(line)
         if page_match:
             flush()
             next_page = int(page_match[1])
-            if next_page < 2 or (page is not None and next_page <= page):
-                raise MarkdownFormatError(f"Invalid original page order at line {line_number}; pages must increase from 2 or later")
+            if next_page < 1 or (page is not None and next_page <= page):
+                raise MarkdownFormatError(f"Invalid original page order at line {line_number}; pages must increase from 1 or later")
             page, label, lines, has_question = next_page, None, [], False
         elif question_match:
             if page is None:

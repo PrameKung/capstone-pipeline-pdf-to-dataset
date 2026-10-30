@@ -10,13 +10,13 @@ does not require a hosted service, database, distributed queue, or paid model AP
 | Location | Contents |
 | --- | --- |
 | `raw/` | Original PDFs, recursively discovered; read-only in Docker |
-| `.pipeline/jobs/` | Prepared PDFs without page 1 and saved OCR Markdown |
+| `.pipeline/jobs/` | Prepared PDFs with the top half of page 1 redacted and saved OCR Markdown |
 | `.pipeline/dataset/` | Internal JSON records, provenance, and review issues |
 | `.pipeline/claims/` | Worker locks, extraction/export manifests, failure records |
 | `output/` | One 36-column CSV per PDF, preserving relative folders and filename |
 
 For example, `raw/signal/318/1.pdf` exports to `output/signal/318/1.csv`.
-The source is unchanged. Page 1 is excluded from prepared content; subsequent
+The source is unchanged. The top half of page 1 is permanently redacted; all
 pages retain original page numbering in internal records. Private input/output,
 state, and credentials stay out of Git.
 

@@ -8,7 +8,7 @@ flowchart TD
     A[Discover PDFs recursively in raw/] --> B[Claim source with shared file lock]
     B --> C{Export only?}
     C -->|No| D{Current extraction manifest and artifacts?}
-    D -->|No| E[Prepare pages 2 onward and run OCR passes]
+    D -->|No| E[Redact top half of page 1 and run OCR passes]
     E --> F[Save extraction manifest]
     D -->|Yes| G[Read student and grading Markdown]
     F --> G
@@ -33,7 +33,7 @@ For `raw/signal/318/1.pdf`:
 - `output/signal/318/1.csv` holds the 36-column dataset. Review status and raw
   teacher records remain in internal JSON, outside the CSV schema.
 
-The source stays unchanged and page 1 is excluded from prepared content.
+The source stays unchanged and the top half of page 1 is permanently redacted in prepared content.
 `needs_review` rows are exported; `failed` records block publication. The student
 OCR pass currently still receives graded images, so the intended input-isolation
 requirement is not yet satisfied. See [verification](pipeline-verification.md)

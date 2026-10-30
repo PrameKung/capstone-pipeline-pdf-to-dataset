@@ -21,8 +21,8 @@ an error rather than overlapping an old worker.
 Normal processing computes a source checksum and compares it with the extraction
 manifest, preprocessing/OCR versions, model, effort, and rendering DPI. Missing
 artifacts or changed inputs regenerate the prepared PDF and both OCR passes.
-Preparation requires a readable, unencrypted PDF with at least two pages. It
-copies pages 2 onward and leaves the source untouched.
+Preparation requires a readable, unencrypted PDF with at least one page. It
+keeps all pages, permanently redacts the top half of page 1, and leaves the source untouched.
 
 Codex runs student and grading passes in separate working directories and saves
 separate Markdown responses. An incomplete manifest prevents export-only mode
@@ -40,7 +40,7 @@ student-input isolation requirement.
 
 `--export-only` reads saved `student-response.md` and `grading-response.md` without
 loading PDF or Codex dependencies. It requires original-page headings beginning
-at page 2 or later. Exact visible question labels group answers across pages;
+at page 1 or later. Exact visible question labels group answers across pages;
 unknown labels and repeated labels on a single page stay unresolved. Unmatched
 grading remains available internally. Student text, raw scores, marks, and feedback
 are kept separate. The teacher pass can calculate an evidence-backed award using

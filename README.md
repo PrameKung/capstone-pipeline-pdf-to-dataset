@@ -1,6 +1,89 @@
 # Local PDF Pipeline
 
-This testing branch recursively finds PDFs under `raw/`, removes page 1 from each working copy, and runs Codex OCR. Each job folder under `.pipeline/jobs/` contains `pages-without-first.pdf`, the separate `student-response.md` and `grading-response.md`, and combined `ocr.md`. The worker validates dataset records and exports one CSV per PDF under the matching `output/` subfolder.
+To run only local PDF preparation with dependencies already installed:
+
+```sh
+make pipeline-prepare
+```
+
+This recursively censors PDFs from `raw/` into
+`.pipeline/jobs/<relative-path-without-extension>/pages-redacted.pdf`.
+It preserves sources and page numbering, skips rendering, Codex, and CSV export,
+and uses offline execution. `RAW_DIR`, `PIPELINE_DATA_DIR`, and
+`PIPELINE_WORKERS` configure roots and capacity. Preparation replaces that PDF's
+job artifacts and invalidates any previous OCR; existing CSV exports stay intact.
+Unchanged successful preparations are cached. The equivalent backend command is
+`sh ../scripts/backend-runtime.sh uv run --offline --locked --no-sync python -m app.pipeline.jobs.worker --once --prepare-only` (run from `backend/`).
+
+On NixOS, the Make commands use the active GCC installation to locate
+`libstdc++.so.6` for PyMuPDF. Keep `gcc` on `PATH`; no package downloads are
+needed. The runtime wrapper preserves existing `LD_LIBRARY_PATH` entries.
+
+This testing branch recursively finds PDFs under `raw/`, permanently censors the top half of page 1 in each working copy, and runs Codex OCR. Each job folder under `.pipeline/jobs/` contains `pages-redacted.pdf`, the separate `student-response.md` and `grading-response.md`, and combined `ocr.md`. The worker validates dataset records and exports one CSV per PDF under the matching `output/` subfolder.
+
+## Question reference and scratch work
+
+Place a clean question paper at `raw/question/question.pdf`. The worker uses it
+when present and reserves folders named `question/` at any depth for reference
+material, excluding those folders from attempt preparation, OCR jobs, and CSV export. For another path,
+use `--question-pdf /path/to/question.pdf` from `backend/`, or set
+`PIPELINE_QUESTION_PDF` (Docker paths must be inside a mounted folder). An explicit
+missing reference fails clearly; without a default or configured reference,
+attempt processing continues without reference context. Use a question paper
+without student work, teacher grading, credentials, or worked solutions.
+
+For `raw/signal/question/question.pdf`, set Docker's `.env` to
+`PIPELINE_QUESTION_PDF=/data/raw/signal/question/question.pdf`. For a local worker
+started from `backend/`, use `--question-pdf ../raw/signal/question/question.pdf`.
+
+On a normal extraction run, each isolated pass receives clearly identified
+question-reference images followed by the redacted attempt pages. Reference pages
+help match question labels, subparts, and tasks; they do not generate responses,
+provide earned-score evidence, or change attempt page numbering. Rubrics and
+teacher score decisions remain exclusive to the grading pass. This context does
+not resolve the existing graded-image isolation limitation described below.
+
+The student pass preserves calculations relevant to a question, including rough, crossed-out,
+incorrect, and incomplete work. Exclude only scratch work clearly unrelated to
+all questions. Preserve uncertain associations under `Question unknown` with an
+`[unclear]` note for review. Do not solve or complete answers from the reference.
+These are extraction instructions, not a guarantee of visual accuracy.
+
+The grading pass records only red teacher marks, raw scores, and feedback. It
+uses the visible first-page table for parent scores and reconciles local teacher
+awards against it using the rubric. Student equations and scratch work belong
+only in `student-response.md`; grading evidence locates marks by page, label,
+and position without reproducing student calculations. Existing grading Markdown
+must be regenerated with a normal extraction run to apply this scope correction;
+export-only mode cannot repair contaminated extraction text.
+
+Teacher-mark interpretation preserves literal evidence before calculating scores:
+
+| Observation | Handling |
+| --- | --- |
+| Clear first-page earned-score cell | Parent total; explicit zero is valid, a blank is missing evidence. |
+| Decimal or fraction | Partial award when readable; retain raw notation. |
+| `3/5` | Confirm earned/max versus fractional notation; request review if ambiguous. |
+| `2+1` or `0+0` | Sum explicit awards within their indicated scope. |
+| Check, headless tick, or single stroke | Determine scope and rubric-supported value; no automatic full credit. |
+| Cross | Rejection/error evidence; no automatic whole-question zero. |
+| Number beside work or circled number | Establish award versus subtotal; count the same award once. |
+| Canceled score and replacement | Preserve both; accept only an unambiguous final revision. |
+| Deduction | Requires an explicit starting award and scope; never assume full credit. |
+| Underline, arrow, circle around work, correction | Feedback/location evidence unless a scoring convention establishes points. |
+| Missing, unreadable, or uncertain mark association | Preserve evidence and request review; never guess. |
+| Complete local total conflicts with first-page total | Preserve both, withhold the final score, and request review. A partial local sum is not a complete conflicting total. |
+
+Local marks and the matching first-page total corroborate the same award; they
+are never added together. Student ink, including red student writing, is not
+teacher grading merely because of its color.
+
+The reference path and SHA-256 are recorded in extraction configuration and
+manifests. Changes invalidate extraction caches; export-only mode rejects a
+changed reference until extraction is refreshed. `make pipeline-prepare` remains
+offline, excludes reference PDFs, and does not render or extract the question
+paper. This branch's no-rendering restriction means reference-assisted extraction
+is configured here but is not run as part of PDF preparation.
 
 ## Run with Docker
 
@@ -108,7 +191,7 @@ Missing grading, unclear content, repeated grading sections, and distinct raw
 scores produce review notes. The parser retains teacher score decisions separately; the record builder validates them before export.
 
 The parser expects `## Page N` and `### Question LABEL` headings from the current
-OCR prompts. It rejects page 1, non-increasing page numbers, and malformed headings
+OCR prompts. It rejects invalid or non-increasing page numbers, and malformed headings
 with `MarkdownFormatError`. Unlabeled page content is retained for review. Only
 boundary blank lines are trimmed. Cross-page grouping assumes repeated exact
 labels refer to the same question within a PDF; it cannot resolve reused question
@@ -119,7 +202,7 @@ The worker uses this parsing stage when building records for CSV export.
 
 ## Build dataset records
 
-From `backend/`, build the 36-column rows from an existing completed OCR job:
+From `backend/`, build the 38-column rows from an existing completed OCR job:
 
 ```python
 from pathlib import Path
@@ -134,7 +217,7 @@ result = build_job_records(
 )
 ```
 
-Each `result["records"]` entry contains `row` (exactly the 36 dataset columns)
+Each `result["records"]` entry contains `row` (exactly the 38 dataset columns)
 and `internal` (student sections, original pages, separate teacher grading,
 review notes, the extracted teacher score, and a separate null verified score). Missing cells are
 empty strings. Supplied JSON lists are serialized into JSON cell strings. No
@@ -231,7 +314,7 @@ with a container path inside the mounted state folder. Local workers interpret
 the environment variable as a local path; use `--metadata-dir ../.pipeline/metadata`
 when running from `backend/`.
 
-The output has the exact 36-column header, UTF-8 encoding, and standard CSV
+The output has the exact 38-column header, UTF-8 encoding, and standard CSV
 quoting for multiline Markdown, LaTeX, commas, and quotes. Failed validation
 blocks publication; `needs_review` rows remain included with their review state
 in the internal JSON run. Unknown question IDs stay blank. Empty response sets
@@ -269,6 +352,47 @@ See [verification results](docs/pipeline-verification.md) for the synthetic
 edge cases, concurrent-process checks, recovery checks, and unverified areas.
 
 ## Reuse one question template across an exam batch
+
+The signal answer-sheet template at `templates/student-answer-template.csv` is
+also accepted by `--question-template`. It uses the 38-column CSV header (legacy 36-column templates are also accepted);
+all fixed cells (including blanks) are copied by question, while `answer_text`
+and `expected_score` come from student extraction and validated teacher marks.
+Reference attempt/response/student IDs are ignored; anonymous attempt and response
+IDs are generated per PDF. CSV fixed cells take precedence over per-response
+overrides; a CSV run does not use supplied response metadata to assign scores.
+The local template incorporates matched fixed values from the supplied reviewer
+`data/v1-prompt_optimization/csv/2.csv`; questions absent from that file retain
+their existing reference metadata. Canonical exam IDs map to numeric OCR labels.
+Both extraction passes receive its question labels. Only the teacher pass receives
+maximum scores and any supplied rubric. Parent rows are subtotals, not extra points;
+CSV exports always begin with every template row in template order. Only supported
+`answer_text` and validated `expected_score` values fill these slots. Missing or
+ambiguous answers stay blank and request internal review; absence never means zero.
+A blank slot has no invented student page provenance. Teacher evidence retains its
+own original page numbers and can establish a parent score without a visible
+student answer. Parent answers are not assembled from subpart answers, and parent
+scores are not divided among subparts. Unknown or duplicate-label answers are
+retained after the template rows as unmapped review records. JSON templates retain
+the existing observed-response-only behavior. Blank criteria do not authorize
+interpreting a check as a particular number of points.
+
+An offline trial using saved OCR for samples `2`, `3`, `3-1`, `3-2`, and `3-3`
+produced all 30 template rows per sample; extra unmapped rows were retained.
+These trial CSVs are local under `.pipeline/trials/fixed-template/output/`.
+This verifies row coverage, not handwriting recognition or scoring accuracy;
+saved OCR/source linkage remains unverified without its extraction manifest.
+
+For this signal batch, run from `backend/`:
+
+```sh
+sh ../scripts/backend-runtime.sh uv run --locked python -m app.pipeline.jobs.worker --once \
+  --question-template ../templates/student-answer-template.csv \
+  --question-pdf ../raw/signal/question/question.pdf
+```
+
+For Docker, set `PIPELINE_QUESTION_TEMPLATE=/data/templates/student-answer-template.csv`
+in `.env` and recreate workers after rebuilding to load the CSV support. Template
+changes invalidate cached extraction; no extraction is started by editing the file.
 
 A shared template avoids copying question/solution/rubric metadata into every
 student's per-PDF metadata file. Store it under `templates/`, outside replaceable
@@ -321,6 +445,25 @@ zero. Partial-credit alternatives are not summed, and parent totals are not
 allocated to subparts. Unclear associations or conflicting evidence require a
 null score and review.
 
+The teacher prompt also cross-checks the visible first-page 13-row score table:
+row N is the earned total for parent question N, including its subparts. The
+`Score decision` keeps this observation in `first_page_score` (status, page, row,
+raw_score, score, evidence), separate from `question_score` (status, score,
+evidence) for independent local grading. The backend validates the parent
+label/row mapping. A clear table award uses `first_page_table` and fills a blank
+`expected_score`, even if local marks do not establish a complete independent
+total; that missing comparison is flagged for review without discarding the
+recorded table score. When a complete local award is available, it must match.
+Conflicting totals or absent/unclear table evidence leave the derived score blank
+and request review. For example, local subpart awards 2 + 1.5 + 2.5 and a row-2
+score of 6 establish question 2's `expected_score` of 6. Parent totals are never
+divided into invented subpart scores or added to local awards. Censored table
+content stays unavailable. Existing decisions lacking `first_page_score` or the new `question_score`
+comparison require new teacher extraction. Deleting `.pipeline/` removes the OCR
+observations needed for export-only recovery; existing CSVs alone cannot recover
+teacher marks or table values. OCR and export cache versions are updated; PDF-only
+preparation remains offline and does not invoke extraction.
+
 The grading prompt recognizes red checks, vertical/rising strokes, and checks
 missing their short arm/head (ไม่มีหัว) as possible positive marks, usually worth
 one point on a one-point step. It rechecks scope and rubric weights: a check on
@@ -357,3 +500,21 @@ ambiguity, stale rubrics, invalid bounds, CSV mapping, and a real synthetic PDF
 through the worker with stubbed Codex responses. A live single-PDF rerun then
 confirmed that inline rubric delivery produced populated CSV expected scores.
 No independent scoring-accuracy evaluation was performed, and no test files were created.
+
+## Extraction confidence
+
+CSV exports append `answer_text_confidence` and `expected_score_confidence` to the
+original 36 columns. Each is an agent-reported estimate from 0 to 1, separate
+from the student's mathematical correctness and human verification. The student
+pass estimates transcription/association confidence; the teacher pass estimates
+confidence in the awarded score. These dynamic fields are not fixed template data.
+For multi-section answers, the minimum is exported only when every section has
+an estimate. Missing or invalid estimates and withheld values remain blank;
+existing review flags still apply. Confidence values are not calibrated accuracy
+probabilities and do not bypass validation.
+
+OCR version 12 requests confidence from both passes; export version 8 includes the
+columns and accepts teacher evidence as either text or a list of citation strings.
+Rebuild Docker workers and run normal extraction to obtain estimates.
+Export-only preserves existing OCR and leaves unavailable confidence blank.
+See [CSV format](docs/csv-output-format.md#ocr-confidence-extension) for details.

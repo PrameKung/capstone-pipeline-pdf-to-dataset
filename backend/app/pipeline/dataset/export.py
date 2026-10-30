@@ -13,7 +13,7 @@ from app.pipeline.dataset.records import _sha256, build_job_records
 from app.pipeline.dataset.schema import CSV_COLUMNS
 from app.pipeline.dataset.metadata import load_metadata
 
-EXPORT_VERSION = 2
+EXPORT_VERSION = 8
 
 
 def atomic_json(path: Path, value: dict) -> None:
@@ -70,6 +70,7 @@ def export_job(source: Path, raw_dir: Path, state_dir: Path, output_dir: Path,
         questions=questions, response_metadata=responses,
         extraction_config=extraction.get("config"),
         extraction_source_sha256=extraction.get("source_sha256"),
+        template_layout=bool(question_template and question_template.suffix.lower() == ".csv"),
     )
     if result["validation"]["has_failures"]:
         raise ValueError(f"Record validation failed; inspect {result['record_path']}")
@@ -112,6 +113,8 @@ def export_job(source: Path, raw_dir: Path, state_dir: Path, output_dir: Path,
         os.replace(name, destination)
     finally:
         Path(name).unlink(missing_ok=True)
+    scored = sum(record["row"]["expected_score"] != "" for record in result["records"])
     print(f"Exported {relative.with_suffix('.csv').as_posix()} "
-          f"({len(result['records'])} rows; {result['validation']['counts']['needs_review']} need review)", flush=True)
+          f"({len(result['records'])} rows; {scored} expected scores; "
+          f"{result['validation']['counts']['needs_review']} need review)", flush=True)
     return True

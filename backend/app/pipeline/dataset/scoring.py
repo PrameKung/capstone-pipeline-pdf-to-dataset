@@ -24,18 +24,44 @@ def rubric_context(question: dict) -> dict:
     return {**context, "rubric_sha256": hashlib.sha256(encoded.encode()).hexdigest()}
 
 
+def _first_page_comparison(response, decision: dict, score: Decimal) -> list[str]:
+    """Compare independently extracted question awards with the page-1 table."""
+    table = decision.get("first_page_score")
+    if not isinstance(table, dict) or table.get("status") != "extracted":
+        return ["First-page table score is missing or unclear; score requires review"]
+    label = response.question_label
+    if not isinstance(label, str) or label not in {str(n) for n in range(1, 14)}:
+        return ["First-page table totals require a mapped parent question 1 through 13; do not allocate to subparts"]
+    if (type(table.get("page")) is not int or table["page"] != 1
+            or type(table.get("row")) is not int or table["row"] != int(label)):
+        return ["First-page table row does not match the question; score requires review"]
+    for key in ("raw_score", "evidence"):
+        if not isinstance(table.get(key), str) or not table[key].strip():
+            return ["First-page table score lacks raw notation or evidence; score requires review"]
+    table_score = number(table.get("score"))
+    if (type(table.get("score")) not in (int, float) or table_score is None or table_score < 0):
+        return ["First-page table score is invalid; score requires review"]
+    if table_score != score:
+        return [f"Question award {score} conflicts with first-page table award {table_score}; score withheld"]
+    return []
+
+
 def teacher_score(response, row: dict):
     """Return (score string or None, notes). Preserve model decisions separately."""
     decisions = [g.score_decision for g in response.grading if g.score_decision is not None]
     if not decisions:
         return None, ["No teacher score decision; rerun teacher extraction to calculate expected_score"]
-    if any(g.review_notes or g.section.review_notes for g in response.grading):
-        return None, ["Teacher observations are ambiguous or malformed; score withheld"]
+    if any(g.review_notes for g in response.grading):
+        return None, ["Teacher observations are malformed; score withheld"]
     if any(d != decisions[0] for d in decisions[1:]):
         return None, ["Conflicting teacher score decisions; score withheld"]
     if len({g.section.page for g in response.grading}) != len(response.grading):
         return None, ["Repeated grading sections on one page; score association requires review"]
     d = decisions[0]
+    local_observation_notes = [note for grading in response.grading
+                               for note in grading.section.review_notes]
+    if local_observation_notes and d.get("basis") != "first_page_table":
+        return None, ["Teacher observations are ambiguous; score withheld"]
     if d.get("status") != "extracted":
         return None, ["Teacher score requires review: " + str(d.get("reasoning", "No reason supplied"))]
     try:
@@ -51,10 +77,14 @@ def teacher_score(response, row: dict):
     if number(d.get("max_score")) != maximum:
         return None, ["Teacher score maximum differs from the supplied rubric"]
     for key in ("reasoning", "evidence"):
-        if not isinstance(d.get(key), str) or not d[key].strip():
+        value = d.get(key)
+        valid = isinstance(value, str) and bool(value.strip())
+        if key == "evidence" and isinstance(value, list):
+            valid = bool(value) and all(isinstance(item, str) and item.strip() for item in value)
+        if not valid:
             return None, [f"Teacher score lacks {key}"]
     basis = d.get("basis")
-    if basis not in ("explicit_total", "sum_awards", "rubric_marks"):
+    if basis not in ("explicit_total", "sum_awards", "rubric_marks", "first_page_table"):
         return None, ["Unsupported teacher score basis"]
     raw_scores = {g.raw_score_text for g in response.grading if g.raw_score_text}
     if basis in ("explicit_total", "sum_awards") and not any(
@@ -100,4 +130,27 @@ def teacher_score(response, row: dict):
             return None, ["Teacher score components do not sum to the final score"]
         if basis == "rubric_marks" and seen != set(by_id):
             return None, ["Teacher marks do not account for every rubric criterion; score withheld"]
+    comparison_notes = _first_page_comparison(response, d, score)
+    if comparison_notes:
+        return None, comparison_notes
+    if basis == "first_page_table":
+        local = d.get("question_score")
+        notes = list(local_observation_notes)
+        if not isinstance(d.get("components"), list) or d["components"]:
+            return None, ["First-page table award must not duplicate local components"]
+        if not isinstance(local, dict) or local.get("status") not in {"extracted", "not_visible", "needs_review"}:
+            return None, ["Missing structured question-score comparison; rerun teacher extraction"]
+        if not isinstance(local.get("evidence"), str) or not local["evidence"].strip():
+            return None, ["Question-score comparison lacks evidence or an explanation"]
+        if local["status"] == "extracted":
+            local_score = number(local.get("score"))
+            if type(local.get("score")) not in (int, float) or local_score is None or not 0 <= local_score <= maximum:
+                return None, ["Independent question award is invalid; score withheld"]
+            if local_score != score:
+                return None, [f"Question award {local_score} conflicts with first-page table award {score}; score withheld"]
+        else:
+            if local.get("score") is not None:
+                return None, ["Unresolved question award must be null; score withheld"]
+            notes.append("First-page table score retained; independent question award unavailable or unclear")
+        return str(score), notes
     return str(score), []
