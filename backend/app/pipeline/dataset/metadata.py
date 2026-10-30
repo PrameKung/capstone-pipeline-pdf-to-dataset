@@ -7,14 +7,14 @@ import math
 import re
 from pathlib import Path
 
-from app.pipeline.dataset.schema import CSV_COLUMNS, TEMPLATE_FIELDS
+from app.pipeline.dataset.schema import CSV_COLUMNS, LEGACY_CSV_COLUMNS, TEMPLATE_FIELDS
 
 
 def csv_question_template(data: bytes) -> dict:
     """Read only question metadata from a blank answer-sheet CSV."""
     reader = csv.DictReader(io.StringIO(data.decode("utf-8-sig")))
-    if reader.fieldnames != list(CSV_COLUMNS):
-        raise ValueError("CSV question template must use the fixed 36-column header")
+    if reader.fieldnames not in (list(CSV_COLUMNS), list(LEGACY_CSV_COLUMNS)):
+        raise ValueError("CSV question template must use the 38-column or legacy 36-column header")
     questions = {}
     for row in reader:
         if None in row or any(value is None for value in row.values()):

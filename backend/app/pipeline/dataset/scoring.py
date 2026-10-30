@@ -77,7 +77,11 @@ def teacher_score(response, row: dict):
     if number(d.get("max_score")) != maximum:
         return None, ["Teacher score maximum differs from the supplied rubric"]
     for key in ("reasoning", "evidence"):
-        if not isinstance(d.get(key), str) or not d[key].strip():
+        value = d.get(key)
+        valid = isinstance(value, str) and bool(value.strip())
+        if key == "evidence" and isinstance(value, list):
+            valid = bool(value) and all(isinstance(item, str) and item.strip() for item in value)
+        if not valid:
             return None, [f"Teacher score lacks {key}"]
     basis = d.get("basis")
     if basis not in ("explicit_total", "sum_awards", "rubric_marks", "first_page_table"):

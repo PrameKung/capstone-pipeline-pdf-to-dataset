@@ -202,7 +202,7 @@ The worker uses this parsing stage when building records for CSV export.
 
 ## Build dataset records
 
-From `backend/`, build the 36-column rows from an existing completed OCR job:
+From `backend/`, build the 38-column rows from an existing completed OCR job:
 
 ```python
 from pathlib import Path
@@ -217,7 +217,7 @@ result = build_job_records(
 )
 ```
 
-Each `result["records"]` entry contains `row` (exactly the 36 dataset columns)
+Each `result["records"]` entry contains `row` (exactly the 38 dataset columns)
 and `internal` (student sections, original pages, separate teacher grading,
 review notes, the extracted teacher score, and a separate null verified score). Missing cells are
 empty strings. Supplied JSON lists are serialized into JSON cell strings. No
@@ -314,7 +314,7 @@ with a container path inside the mounted state folder. Local workers interpret
 the environment variable as a local path; use `--metadata-dir ../.pipeline/metadata`
 when running from `backend/`.
 
-The output has the exact 36-column header, UTF-8 encoding, and standard CSV
+The output has the exact 38-column header, UTF-8 encoding, and standard CSV
 quoting for multiline Markdown, LaTeX, commas, and quotes. Failed validation
 blocks publication; `needs_review` rows remain included with their review state
 in the internal JSON run. Unknown question IDs stay blank. Empty response sets
@@ -354,7 +354,7 @@ edge cases, concurrent-process checks, recovery checks, and unverified areas.
 ## Reuse one question template across an exam batch
 
 The signal answer-sheet template at `templates/student-answer-template.csv` is
-also accepted by `--question-template`. It uses the fixed 36-column CSV header;
+also accepted by `--question-template`. It uses the 38-column CSV header (legacy 36-column templates are also accepted);
 all fixed cells (including blanks) are copied by question, while `answer_text`
 and `expected_score` come from student extraction and validated teacher marks.
 Reference attempt/response/student IDs are ignored; anonymous attempt and response
@@ -500,3 +500,21 @@ ambiguity, stale rubrics, invalid bounds, CSV mapping, and a real synthetic PDF
 through the worker with stubbed Codex responses. A live single-PDF rerun then
 confirmed that inline rubric delivery produced populated CSV expected scores.
 No independent scoring-accuracy evaluation was performed, and no test files were created.
+
+## Extraction confidence
+
+CSV exports append `answer_text_confidence` and `expected_score_confidence` to the
+original 36 columns. Each is an agent-reported estimate from 0 to 1, separate
+from the student's mathematical correctness and human verification. The student
+pass estimates transcription/association confidence; the teacher pass estimates
+confidence in the awarded score. These dynamic fields are not fixed template data.
+For multi-section answers, the minimum is exported only when every section has
+an estimate. Missing or invalid estimates and withheld values remain blank;
+existing review flags still apply. Confidence values are not calibrated accuracy
+probabilities and do not bypass validation.
+
+OCR version 12 requests confidence from both passes; export version 8 includes the
+columns and accepts teacher evidence as either text or a list of citation strings.
+Rebuild Docker workers and run normal extraction to obtain estimates.
+Export-only preserves existing OCR and leaves unavailable confidence blank.
+See [CSV format](docs/csv-output-format.md#ocr-confidence-extension) for details.

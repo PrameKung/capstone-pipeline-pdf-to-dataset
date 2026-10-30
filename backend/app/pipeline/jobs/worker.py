@@ -16,7 +16,7 @@ from app.pipeline.dataset.metadata import load_metadata
 from app.pipeline.dataset.scoring import rubric_context
 import json
 
-OCR_VERSION = 11
+OCR_VERSION = 12
 
 
 def question_reference(raw_dir: Path, configured: Path | None = None) -> Path | None:

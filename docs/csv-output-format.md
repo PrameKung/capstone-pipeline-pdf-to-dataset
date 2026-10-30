@@ -10,12 +10,12 @@ Treat each PDF as one attempt. Persist its anonymous `attempt_id` and each `resp
 
 ## Rows and header
 
-The output schema matches all 36 columns of `kru_grade_ai_statistics_final_student_style.csv`, in their original order. This is the sole CSV header for this format; do not append pipeline-specific columns. The reference contains 184 rows, all labeled as synthetic responses.
+The output schema preserves the 36 columns of `kru_grade_ai_statistics_final_student_style.csv` in their original order and appends `answer_text_confidence` and `expected_score_confidence`, for 38 columns. This confidence extension is the current export header. Existing 36-column question templates remain accepted. The reference contains 184 rows, all labeled as synthetic responses.
 
 Write one row per question response, repeating the associated question and rubric metadata. Preserve this exact column order:
 
 ```csv
-source,subject,topic,concept_tags,question_type,question_id,rubric_version,question_text,answer,solution,rubric_max_score,rubric_criteria,rubric_scoring_guide,question_review_status,reviewer_feedback,reviewed_answer,reviewed_solution,student_id,response_id,response_origin,attempt_id,sample_type,answer_text,expected_score,rubric_analysis,covered_rubric_points,missed_rubric_points,error_categories,error_location,missed_concepts,grader_feedback,improvement_suggestion,difficulty,difficulty_reason,answer_image_path,image_review_status
+source,subject,topic,concept_tags,question_type,question_id,rubric_version,question_text,answer,solution,rubric_max_score,rubric_criteria,rubric_scoring_guide,question_review_status,reviewer_feedback,reviewed_answer,reviewed_solution,student_id,response_id,response_origin,attempt_id,sample_type,answer_text,expected_score,rubric_analysis,covered_rubric_points,missed_rubric_points,error_categories,error_location,missed_concepts,grader_feedback,improvement_suggestion,difficulty,difficulty_reason,answer_image_path,image_review_status,answer_text_confidence,expected_score_confidence
 ```
 
 | Column | Cell format | Meaning and conversion rule |
@@ -59,9 +59,40 @@ source,subject,topic,concept_tags,question_type,question_id,rubric_version,quest
 
 Meanings of entirely blank reference fields are inferred from their names; the reference does not demonstrate their populated values or establish status enums. Observed categories above describe this file, not an exhaustive vocabulary for other datasets.
 
+## OCR confidence extension
+
+Teacher score decisions may express top-level `evidence` as a nonempty string or
+a nonempty list of nonblank citation strings. The original evidence is preserved
+internally; empty, mixed-type, or malformed lists cannot support an awarded score.
+All question association, rubric, bounds, and first-page reconciliation checks
+still apply.
+
+| Column | Cell format | Meaning |
+| --- | --- | --- |
+| `answer_text_confidence` | Number from 0 to 1, or blank | Student-pass estimate of faithful transcription and question association, including incorrect math. Not an estimate of answer correctness. |
+| `expected_score_confidence` | Number from 0 to 1, or blank | Teacher-pass estimate of reading and associating the awarded score from visible marks or the first-page table. Only exported when the teacher-derived score is accepted and agrees with the exported score. |
+
+These are uncalibrated agent self-estimates, not measured accuracy probabilities or
+human verification. They do not override evidence validation or review flags.
+Confidence is dynamic per PDF, never copied from the fixed question template or
+supplied response metadata. Missing values, withheld scores, and blank template
+slots have blank confidence, not zero or a guessed default. Zero is a valid
+reported estimate. Legacy OCR without estimates retains blank confidence and
+requests review for populated extracted values; rerun normal extraction to obtain
+estimates. Export-only does not call Codex or manufacture them.
+
+Student sections report `<!-- answer_text_confidence: 0.9 -->` immediately after
+the question heading. This metadata is removed from `answer_text` and retained
+separately in internal records. For an answer spanning sections, use the minimum
+estimate only if every section provides a valid estimate; otherwise leave blank.
+The teacher's `Score decision` JSON reports `expected_score_confidence` separately
+from its awarded `expected_score`. Invalid, repeated, or unavailable estimates
+request review and are not exported as confidence numbers. Numeric strings,
+booleans, non-finite numbers, and values outside 0–1 are rejected as agent estimates.
+
 ## Conversion and validation rules
 
-- Match Markdown fields to the exact column names above. Keep all 36 columns, even when values are unavailable.
+- Match Markdown fields to the exact column names above. Keep all 38 columns, even when values are unavailable.
 - Repeat question-level metadata for each response. Keep reference answers, student responses, rubric evaluations, and review fields separate.
 - Preserve Markdown and LaTeX as cell text, including line breaks and embedded tables. A table inside `question_text` remains in that single cell.
 - Transcribe supplied values only. Do not solve questions, correct student work, invent rubric evaluations, or invent missing scores and review approvals. The teacher pass may calculate an award from unambiguous teacher annotations and the supplied rubric, with raw evidence and reasoning retained internally.

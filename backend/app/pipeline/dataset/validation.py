@@ -47,7 +47,7 @@ def validate_records(records: list[dict[str, Any]], *, attempt_id: str) -> dict[
         parsed: dict[str, Any] = {}
         parsed_rows.append(parsed)
         if tuple(row) != CSV_COLUMNS:
-            flag(index, "columns", "Columns must match the exact 36-column order", "failed")
+            flag(index, "columns", "Columns must match the exact 38-column order", "failed")
         for field, value in row.items():
             if field in {"expected_score", "rubric_max_score"}:
                 continue
@@ -66,6 +66,14 @@ def validate_records(records: list[dict[str, Any]], *, attempt_id: str) -> dict[
         else:
             flag(index, "question_id", "Question mapping is missing or invalid")
         pages = record["internal"].get("source_pages")
+        for field, content in (("answer_text_confidence", "answer_text"),
+                               ("expected_score_confidence", "expected_score")):
+            if row.get(field, "") != "":
+                estimate = _number(row[field])
+                if estimate is None or not 0 <= estimate <= 1:
+                    flag(index, field, "Confidence must be finite and between zero and one", "failed")
+                if row.get(content, "") == "":
+                    flag(index, field, "Confidence requires a populated extracted value", "failed")
         missing_template_slot = (record["internal"].get("template_placeholder") is True
                                  and row.get("question_id") and row.get("answer_text") == ""
                                  and record["internal"].get("student_sections") == [])

@@ -78,7 +78,7 @@ Output contract:
 - Balance delimiters and braces. Use \begin{aligned} ... \end{aligned} inside
   one display block only when alignment is needed. Do not use \(...\), \[...\],
   equation/align environments, custom macros, packages, document preambles,
-  equation numbering commands, HTML, or code fences for math.
+  equation numbering commands, HTML (except required confidence metadata), or code fences for math.
 - Keep prose outside math delimiters. Escape literal currency dollars as \$.
   Use [unclear] for unreadable content and [diagram: ...] for a brief description
   of visible diagram features. Keep these annotations outside math blocks. If an
@@ -240,7 +240,12 @@ line (no code fence). For a question spanning pages, put its consolidated decisi
 only in its last section; never add page subtotals as separate question scores.
 The object must have these keys:
 question_id, rubric_sha256, status, expected_score, max_score, basis, evidence,
-reasoning, components, first_page_score, question_score.
+reasoning, components, first_page_score, question_score, expected_score_confidence.
+expected_score_confidence is your confidence in reading and associating the teacher
+award, not confidence that the student's solution is correct. Use a JSON number
+from 0 to 1, or null if the award is missing, ambiguous, or withheld. Consider ink
+legibility, question association, and conflicting score evidence. This is an
+uncalibrated self-estimate; never treat it as proof or use it to bypass review.
 first_page_score is an object with status (extracted, not_visible, or needs_review),
 page (1), row (the parent question number 1 through 13, or null if unknown),
 raw_score (literal earned-score cell text or null), score (JSON number or null),
@@ -526,7 +531,15 @@ def extract_pdf(prepared_pdf: Path, output_path: Path, state_dir: Path, *,
                 "Do not solve, correct, or guess unclear content. The ATTEMPT images are pages 1 onward "
                 "(the top half of page 1 is redacted) of the original student PDF; "
                 "label headings with original page numbers. If a page has no visible student work, write "
-                "[no visible student work] under its ATTEMPT page heading.\n\n" + MARKDOWN_FORMAT,
+                "[no visible student work] under its ATTEMPT page heading.\n\n" + MARKDOWN_FORMAT
+                + "\n\nFor each student question section, add exactly one metadata line immediately "
+                "after its heading: <!-- answer_text_confidence: NUMBER -->. NUMBER is your "
+                "confidence from 0 to 1 that the transcription faithfully represents the visible "
+                "student work and its question association, including incorrect math. Use null "
+                "when unavailable. Consider unclear symbols and missing fragments. Do not rate "
+                "mathematical correctness or teacher grading. This is an uncalibrated self-estimate, "
+                "not a verified accuracy probability. Preserve [unclear] and review flags even "
+                "when confidence is high. Keep this metadata separate from the student text.",
                 student_images,
                 student_dir,
                 model=model, effort=effort, timeout=timeout,

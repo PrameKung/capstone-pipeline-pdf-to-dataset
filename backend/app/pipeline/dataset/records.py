@@ -18,6 +18,7 @@ from app.pipeline.dataset.markdown import Response, match_markdown
 from app.pipeline.dataset.schema import CSV_COLUMNS, JSON_FIELDS, QUESTION_FIELDS, RESPONSE_FIELDS, TEMPLATE_FIELDS
 from app.pipeline.dataset.validation import validate_records
 from app.pipeline.dataset.scoring import teacher_score, number
+from app.pipeline.dataset.confidence import response_confidence
 
 
 def _sha256(path: Path) -> str:
@@ -146,6 +147,9 @@ def build_job_records(
         row.update(response_id=response_id, attempt_id=attempt_id, answer_text=response.answer_text)
         extracted_score, score_notes = teacher_score(response, row)
         notes.extend(score_notes)
+        answer_confidence, score_confidence, confidence_notes = response_confidence(response, extracted_score)
+        row.update(answer_text_confidence=answer_confidence, expected_score_confidence=score_confidence)
+        notes.extend(confidence_notes)
         expected_source = "supplied_metadata" if row["expected_score"] != "" else None
         if extracted_score is not None:
             if row["expected_score"] == "":
@@ -153,6 +157,7 @@ def build_job_records(
                 expected_source = "teacher_score_decision"
             elif number(row["expected_score"]) != number(extracted_score):
                 notes.append("Supplied expected_score conflicts with the teacher-derived score; supplied value retained")
+                row["expected_score_confidence"] = ""
         records.append({
             "row": row,
             "internal": {
