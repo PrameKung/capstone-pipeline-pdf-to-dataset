@@ -66,7 +66,10 @@ def validate_records(records: list[dict[str, Any]], *, attempt_id: str) -> dict[
         else:
             flag(index, "question_id", "Question mapping is missing or invalid")
         pages = record["internal"].get("source_pages")
-        if (not isinstance(pages, list) or not pages
+        missing_template_slot = (record["internal"].get("template_placeholder") is True
+                                 and row.get("question_id") and row.get("answer_text") == ""
+                                 and record["internal"].get("student_sections") == [])
+        if (not isinstance(pages, list) or (not pages and not missing_template_slot)
                 or any(type(page) is not int or page < 1 for page in pages)):
             flag(index, "source_pages", "Original source pages must be integers starting at 1", "failed")
         for field in JSON_FIELDS:

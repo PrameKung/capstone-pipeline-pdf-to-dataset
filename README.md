@@ -365,8 +365,22 @@ The local template incorporates matched fixed values from the supplied reviewer
 their existing reference metadata. Canonical exam IDs map to numeric OCR labels.
 Both extraction passes receive its question labels. Only the teacher pass receives
 maximum scores and any supplied rubric. Parent rows are subtotals, not extra points;
-template rows do not create missing student responses. Blank criteria do not
-authorize interpreting a check as a particular number of points.
+CSV exports always begin with every template row in template order. Only supported
+`answer_text` and validated `expected_score` values fill these slots. Missing or
+ambiguous answers stay blank and request internal review; absence never means zero.
+A blank slot has no invented student page provenance. Teacher evidence retains its
+own original page numbers and can establish a parent score without a visible
+student answer. Parent answers are not assembled from subpart answers, and parent
+scores are not divided among subparts. Unknown or duplicate-label answers are
+retained after the template rows as unmapped review records. JSON templates retain
+the existing observed-response-only behavior. Blank criteria do not authorize
+interpreting a check as a particular number of points.
+
+An offline trial using saved OCR for samples `2`, `3`, `3-1`, `3-2`, and `3-3`
+produced all 30 template rows per sample; extra unmapped rows were retained.
+These trial CSVs are local under `.pipeline/trials/fixed-template/output/`.
+This verifies row coverage, not handwriting recognition or scoring accuracy;
+saved OCR/source linkage remains unverified without its extraction manifest.
 
 For this signal batch, run from `backend/`:
 

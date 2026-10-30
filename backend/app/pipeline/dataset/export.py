@@ -13,7 +13,7 @@ from app.pipeline.dataset.records import _sha256, build_job_records
 from app.pipeline.dataset.schema import CSV_COLUMNS
 from app.pipeline.dataset.metadata import load_metadata
 
-EXPORT_VERSION = 5
+EXPORT_VERSION = 6
 
 
 def atomic_json(path: Path, value: dict) -> None:
@@ -70,6 +70,7 @@ def export_job(source: Path, raw_dir: Path, state_dir: Path, output_dir: Path,
         questions=questions, response_metadata=responses,
         extraction_config=extraction.get("config"),
         extraction_source_sha256=extraction.get("source_sha256"),
+        template_layout=bool(question_template and question_template.suffix.lower() == ".csv"),
     )
     if result["validation"]["has_failures"]:
         raise ValueError(f"Record validation failed; inspect {result['record_path']}")
