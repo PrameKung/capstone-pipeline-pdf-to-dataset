@@ -15,4 +15,7 @@ RESPONSE_FIELDS = frozenset(CSV_COLUMNS) - QUESTION_FIELDS - {
     "response_id", "attempt_id", "answer_text",
 }
 JSON_FIELDS = {"rubric_criteria", "rubric_analysis", "error_categories", "missed_concepts"}
+TEMPLATE_FIELDS = frozenset(CSV_COLUMNS) - {
+    "answer_text", "expected_score", "response_id", "attempt_id", "student_id",
+}
 

@@ -499,9 +499,18 @@ def extract_pdf(prepared_pdf: Path, output_path: Path, state_dir: Path, *,
             )
             student_images = student_reference + student_images
             grading_images = grading_reference + grading_images
-        scope_prompt = reference_context + "\n\n" + QUESTION_SCOPE_PROMPT
+        question_labels = list(questions or {})
+        template_context = (
+            "\n\n<question_labels>\n" + json.dumps(question_labels, ensure_ascii=False)
+            + "\n</question_labels>\n"
+            "These are reference question labels, not evidence of an answer. Match visible "
+            "work to these labels only when supported by the page. Parent labels are subtotals "
+            "of their subparts: do not duplicate subpart work under a parent or invent missing "
+            "responses to fill the template. Preserve unknown associations for review."
+        )
+        scope_prompt = reference_context + template_context + "\n\n" + QUESTION_SCOPE_PROMPT
         rubric = {label: rubric_context(question) for label, question in (questions or {}).items()}
-        teacher_prompt = (reference_context + "\n\n" + GRADING_SCOPE_PROMPT
+        teacher_prompt = (reference_context + template_context + "\n\n" + GRADING_SCOPE_PROMPT
                           + "\n\n" + TEACHER_PROMPT + "\n\n" + MARKDOWN_FORMAT
                           + "\n\n<supplied_rubric>\n"
                           + json.dumps(rubric, ensure_ascii=False, allow_nan=False)

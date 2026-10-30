@@ -353,6 +353,33 @@ edge cases, concurrent-process checks, recovery checks, and unverified areas.
 
 ## Reuse one question template across an exam batch
 
+The signal answer-sheet template at `templates/student-answer-template.csv` is
+also accepted by `--question-template`. It uses the fixed 36-column CSV header;
+all fixed cells (including blanks) are copied by question, while `answer_text`
+and `expected_score` come from student extraction and validated teacher marks.
+Reference attempt/response/student IDs are ignored; anonymous attempt and response
+IDs are generated per PDF. CSV fixed cells take precedence over per-response
+overrides; a CSV run does not use supplied response metadata to assign scores.
+The local template incorporates matched fixed values from the supplied reviewer
+`data/v1-prompt_optimization/csv/2.csv`; questions absent from that file retain
+their existing reference metadata. Canonical exam IDs map to numeric OCR labels.
+Both extraction passes receive its question labels. Only the teacher pass receives
+maximum scores and any supplied rubric. Parent rows are subtotals, not extra points;
+template rows do not create missing student responses. Blank criteria do not
+authorize interpreting a check as a particular number of points.
+
+For this signal batch, run from `backend/`:
+
+```sh
+sh ../scripts/backend-runtime.sh uv run --locked python -m app.pipeline.jobs.worker --once \
+  --question-template ../templates/student-answer-template.csv \
+  --question-pdf ../raw/signal/question/question.pdf
+```
+
+For Docker, set `PIPELINE_QUESTION_TEMPLATE=/data/templates/student-answer-template.csv`
+in `.env` and recreate workers after rebuilding to load the CSV support. Template
+changes invalidate cached extraction; no extraction is started by editing the file.
+
 A shared template avoids copying question/solution/rubric metadata into every
 student's per-PDF metadata file. Store it under `templates/`, outside replaceable
 worker state. Templates and reference material are ignored by default; the

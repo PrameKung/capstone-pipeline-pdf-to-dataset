@@ -15,7 +15,7 @@ from typing import Any, Mapping
 
 from app.pipeline.dataset.markdown import match_markdown
 
-from app.pipeline.dataset.schema import CSV_COLUMNS, JSON_FIELDS, QUESTION_FIELDS, RESPONSE_FIELDS
+from app.pipeline.dataset.schema import CSV_COLUMNS, JSON_FIELDS, QUESTION_FIELDS, RESPONSE_FIELDS, TEMPLATE_FIELDS
 from app.pipeline.dataset.validation import validate_records
 from app.pipeline.dataset.scoring import teacher_score, number
 
@@ -86,7 +86,7 @@ def build_job_records(
     questions = questions or {}
     response_metadata = response_metadata or {}
     # Check supplied metadata even if an OCR label does not occur in this attempt.
-    question_values = {label: _metadata(values, QUESTION_FIELDS) for label, values in questions.items()}
+    question_values = {label: _metadata(values, TEMPLATE_FIELDS) for label, values in questions.items()}
     supplied_responses = {key: _metadata(values, RESPONSE_FIELDS) for key, values in response_metadata.items()}
     label_counts = Counter(response.question_label for response in matched.responses)
     occurrences: Counter[str] = Counter()
@@ -114,6 +114,11 @@ def build_job_records(
         if not row["question_id"]:
             notes.append("No supplied question ID mapping; response remains unmapped")
         row.update(supplied_responses.get(response_id, {}))
+        if unique_label and label in question_values and TEMPLATE_FIELDS <= question_values[label].keys():
+            # A CSV sheet fixes every template cell, including intentional blanks.
+            # Attempt-specific overrides cannot replace it or supply earned scores.
+            row.update(question_values[label])
+            row["expected_score"] = ""
         row.update(response_id=response_id, attempt_id=attempt_id, answer_text=response.answer_text)
         extracted_score, score_notes = teacher_score(response, row)
         notes.extend(score_notes)
