@@ -518,3 +518,30 @@ columns and accepts teacher evidence as either text or a list of citation string
 Rebuild Docker workers and run normal extraction to obtain estimates.
 Export-only preserves existing OCR and leaves unavailable confidence blank.
 See [CSV format](docs/csv-output-format.md#ocr-confidence-extension) for details.
+
+## Evidence-aware student OCR (version 13)
+
+For a colleague starting from PDFs, use the
+[copyable handoff prompt](docs/prompts/pdf-to-csv-handoff.md).
+See the [branch comparison](docs/branch-comparison-20261101.md) before merging.
+
+The student prompt now surveys all attempt pages before transcription, preserves
+continuation and parent/subpart relationships, and distinguishes blank, unreadable,
+redacted and unmapped work. It requests literal `[unclear]` markers with brief
+bracketed location notes outside math, visible graph features without inferred
+coordinates, and explicit handling of uncertain cancellation and teacher ink.
+Before returning Markdown, it rechecks omissions, duplicate transcription and
+unsupported additions against the images. The existing headings, confidence
+comment and 38-column CSV contract are unchanged; location notes remain visible
+transcription annotations in `answer_text`, not structured sidecar metadata.
+
+These are instructions within the existing student call, not a separate AI audit,
+document-map JSON, crop/retry controller or new image preprocessing. Both passes
+still receive the existing full-color prepared-page images. The prompt does not
+physically remove teacher annotations or establish measured OCR accuracy.
+Inference for synthetic training remains outside source transcription.
+
+OCR version 13 invalidates older extraction caches on the next normal worker run.
+Rebuild/recreate deployed Docker workers to load the new code when ready to run;
+export-only does not apply new prompts to saved OCR. Changing the code alone does
+not rerun datasets or modify existing output CSVs.
