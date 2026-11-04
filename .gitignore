@@ -7,11 +7,12 @@
 # Local worker state, checkpoints, logs, and intermediate evidence
 /.pipeline/
 
-# Keep reference material local; version the explicitly approved exam template.
+# Keep reference material local; version the approved exam templates.
 /templates/*
 !/templates/com-eng-math-ii-midterm-2026-1/
 /templates/com-eng-math-ii-midterm-2026-1/*
 !/templates/com-eng-math-ii-midterm-2026-1/questions.json
+!/templates/com-eng-math-ii-midterm-2026-1/student-answer-template.csv
 
 # Local secrets and Python environments
 .env
